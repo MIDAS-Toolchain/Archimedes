@@ -176,7 +176,7 @@ static void a_DoMouseDown( SDL_MouseButtonEvent* button )
   app.mouse.x = button->x;
   app.mouse.y = button->y;
   app.mouse.pressed = 1; // Explicitly mark as pressed
-  // printf("Debug: Mouse Down: Button %d, State %d, Clicks %d, Pos (%d, %d)\n", button->button, button->state, button->clicks, button->x, button->y);
+  //printf("Debug: Mouse Down: Button %d, State %d, Clicks %d, Pos (%d, %d)\n", button->button, button->state, button->clicks, button->x, button->y);
 }
 
 /**
@@ -205,7 +205,7 @@ static void a_DoMouseUp( SDL_MouseButtonEvent* button )
   app.mouse.x = button->x;
   app.mouse.y = button->y;
   app.mouse.pressed = 0; // Explicitly mark as not pressed
-  // printf("Debug: Mouse Up: Button %d, State %d, Clicks %d, Pos (%d, %d)\n", button->button, button->state, button->clicks, button->x, button->y);
+  //printf("Debug: Mouse Up: Button %d, State %d, Clicks %d, Pos (%d, %d)\n", button->button, button->state, button->clicks, button->x, button->y);
 }
 
 /**

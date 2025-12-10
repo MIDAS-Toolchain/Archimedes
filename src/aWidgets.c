@@ -61,13 +61,14 @@ void a_DoWidget( void )
     aWidget_t* current = GetCurrentWidget();
     if ( current != NULL )
     {
-      if ( app.mouse.button == 1 || app.mouse.pressed )  //left mouse click
+      if ( app.mouse.button == 1 && app.mouse.state == 1 )
       {
-        if ( current->action != NULL && app.mouse.button == 1 )
+        if ( current->action != NULL )
         {
+          app.mouse.button = 0;
+          app.mouse.pressed = 0;
           current->action();
         }
-        app.mouse.button = 0;
 
         current->state = WI_PRESSED;
         app.active_widget = current;
@@ -868,8 +869,12 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   uint8_t fg[4] = {0};
   uint8_t bg[4] = {0};
   
-  aAUFNode_t* node_flex     = a_AUFGetObjectItem( root, "flex" );
-  aAUFNode_t* node_spaceing = a_AUFGetObjectItem( root, "spacing" );
+  aAUFNode_t* node_flex      = a_AUFGetObjectItem( root, "flex" );
+  aAUFNode_t* node_row       = a_AUFGetObjectItem( root, "row" );
+  aAUFNode_t* node_col       = a_AUFGetObjectItem( root, "col" );
+  aAUFNode_t* node_grid_x    = a_AUFGetObjectItem( root, "grid_x" );
+  aAUFNode_t* node_grid_y    = a_AUFGetObjectItem( root, "grid_y" );
+  aAUFNode_t* node_spaceing  = a_AUFGetObjectItem( root, "spacing" );
   aAUFNode_t* node_container = a_AUFGetObjectItem( root, "container" );
 
   container = ( aContainerWidget_t* )malloc( sizeof( aContainerWidget_t ) );
@@ -886,6 +891,26 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   if ( node_flex != NULL )
   {
     w->flex = node_flex->value_int;
+  }
+  
+  if ( node_row != NULL )
+  {
+    w->grid_size.x = node_row->value_int;
+  }
+  
+  if ( node_col != NULL )
+  {
+    w->grid_size.y = node_col->value_int;
+  }
+  
+  if ( node_grid_x != NULL )
+  {
+    w->grid_pos.x = node_grid_x->value_int;
+  }
+  
+  if ( node_grid_y != NULL )
+  {
+    w->grid_pos.y = node_grid_y->value_int;
   }
 
   if ( node_spaceing != NULL )
@@ -1045,7 +1070,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
         current->texture = node_texture->value_int;
       }
 
-      int widget_effective_w = current->rect.w;
+      int widget_effective_w = current->rect.w; //size of current widget
       int widget_effective_h = current->rect.h;
 
       int current_widget_max_x_extent = current->rect.x + current->rect.w;
@@ -1095,9 +1120,17 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       switch ( current->type )
       {
         case WT_BUTTON:
+          if ( w->flex == 1 || w->flex == 2 )
+          {
+            current_widget_max_x_extent = current->rect.x + current->rect.w;
+            current_widget_max_y_extent = current->rect.y + current->rect.h;
+          }
+          
+          else if ( w->flex == 3 )
+          {
+            
+          }
           CreateButtonWidget( current );
-          current_widget_max_x_extent = current->rect.x + current->rect.w;
-          current_widget_max_y_extent = current->rect.y + current->rect.h;
           break;
 
         case WT_SELECT:
