@@ -200,38 +200,45 @@ void a_DrawFilledRect( const aRectf_t rect, const aColor_t color )
   SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_NONE );
 }
 
-void a_Blit( aImage_t* img, int x, int y )
+void a_Blit( aImage_t* img, float x, float y )
 {
   if ( !img ) return;
+  
+  // Query texture for its original dimensions
+  int temp_w, temp_h;
+  SDL_QueryTexture( img->texture, NULL, NULL, &temp_w, &temp_h );
 
-  SDL_Rect dest;
+  SDL_FRect dest;
   dest.x = x;
   dest.y = y;
-
-  // Query texture for its original dimensions
-  SDL_QueryTexture( img->texture, NULL, NULL, &dest.w, &dest.h );
-
-  SDL_RenderCopy( app.renderer, img->texture, NULL, &dest );
+  dest.w = temp_w;
+  dest.h = temp_h;
+  
+  SDL_RenderCopyF( app.renderer, img->texture, NULL, &dest );
 }
 
 void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale )
 {
-  SDL_Rect temp_dest = {0};
+  SDL_FRect temp_dest = {0};
   SDL_Rect temp_src = {0};
 
   if ( !img ) return;
 
   if ( dest != NULL )
   {
-    temp_dest = (SDL_Rect){ .x = dest->x,
+    temp_dest = (SDL_FRect){ .x = dest->x,
       .y = dest->y,
       .w = dest->w * scale,
-      .h = dest->h * scale };
+      .h = dest->h * scale
+    };
   }
   
   else
   {
-    SDL_QueryTexture( img->texture, NULL, NULL, &temp_dest.w, &temp_dest.h );
+    int temp_w, temp_h;
+    SDL_QueryTexture( img->texture, NULL, NULL, &temp_w, &temp_h );
+    temp_dest.w = temp_w;
+    temp_dest.h = temp_h;
   }
 
   if ( src != NULL )
@@ -239,7 +246,8 @@ void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale
     temp_src = (SDL_Rect){ .x = src->x,
       .y = src->y,
       .w = src->w,
-      .h = src->h };
+      .h = src->h
+    };
   }
   
   else
@@ -247,26 +255,42 @@ void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale
     SDL_QueryTexture( img->texture, NULL, NULL, &temp_src.w, &temp_src.h );
   }
 
-  SDL_RenderCopy( app.renderer, img->texture, &temp_src, &temp_dest );
+  SDL_RenderCopyF( app.renderer, img->texture, &temp_src, &temp_dest );
 }
 
-void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aImage_t* dest,
-                                   aRectf_t dest_rect, int scale )
+void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,
+                                   aImage_t* dest, aRectf_t* dest_rect,
+                                   float scale )
 {
-  SDL_Rect temp_rect = (SDL_Rect){
-    .x = dest_rect.x,
-    .y = dest_rect.y,
-    .w = dest_rect.w * scale,
-    .h = dest_rect.h * scale,
+  if ( !src ) return;
+  if ( !dest ) return;
+
+  SDL_Rect temp_src_rect = {0};
+  SDL_Rect temp_dest_rect = (SDL_Rect){
+    .x = dest_rect->x,
+    .y = dest_rect->y,
+    .w = dest_rect->w * scale,
+    .h = dest_rect->h * scale,
   };
 
-  if ( scale )
+  if ( src_rect != NULL )
   {
-    temp_rect.w *= scale;
-    temp_rect.h *= scale;
+    temp_src_rect = (SDL_Rect){
+      .x = src_rect->x,
+      .y = src_rect->y,
+      .w = src_rect->w,
+      .h = src_rect->h,
+    };
+  }
+  
+  else
+  {
+    SDL_QueryTexture( src->texture, NULL, NULL,
+                      &temp_src_rect.w, &temp_src_rect.h );
   }
 
-  SDL_BlitSurface( src->surface, NULL, dest->surface, &temp_rect );
+  SDL_BlitSurface( src->surface, &temp_src_rect, dest->surface, &temp_dest_rect );
+  dest->texture = SDL_CreateTextureFromSurface( app.renderer, dest->surface );
 }
 
 void a_UpdateTitle( const char *title )

@@ -148,40 +148,45 @@ void a_DoWidget( void )
         app.active_widget = widget_head.next;
       }
     }*/
-
-    if ( app.keyboard[SDL_SCANCODE_LEFT] )
+    if ( app.active_widget->type == WT_SELECT || app.active_widget->type == WT_SLIDER )
     {
-      app.keyboard[SDL_SCANCODE_LEFT] = 0;
-      ChangeWidgetValue( -1 );
-    }
-    
-    if ( app.keyboard[SDL_SCANCODE_RIGHT] )
-    {
-      app.keyboard[SDL_SCANCODE_RIGHT] = 0;
-      ChangeWidgetValue( 1 );
-    }
-
-    if ( app.keyboard[SDL_SCANCODE_SPACE] ||
-         app.keyboard[SDL_SCANCODE_RETURN] )
-    { 
-      app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
-
-      if ( app.active_widget->type == WT_INPUT )
+      if ( app.keyboard[SDL_SCANCODE_LEFT] )
       {
-        cursor_blink = 0;
-        handle_input_widget = 1;
-        memset( app.input_text, 0, sizeof( app.input_text ) );
-      }
-      
-      else if ( app.active_widget->type == WT_CONTROL )
-      {
-        app.last_key_pressed = -1;
-        handle_control_widget = 1;
+        app.keyboard[SDL_SCANCODE_LEFT] = 0;
+        ChangeWidgetValue( -1 );
       }
 
-      else if ( app.active_widget->action != NULL )
+      if ( app.keyboard[SDL_SCANCODE_RIGHT] )
       {
-        app.active_widget->action();
+        app.keyboard[SDL_SCANCODE_RIGHT] = 0;
+        ChangeWidgetValue( 1 );
+      }
+    }
+
+    if ( app.active_widget != NULL )
+    {
+      if ( app.keyboard[SDL_SCANCODE_SPACE] ||
+        app.keyboard[SDL_SCANCODE_RETURN] )
+      { 
+        app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
+
+        if ( app.active_widget->type == WT_INPUT )
+        {
+          cursor_blink = 0;
+          handle_input_widget = 1;
+          memset( app.input_text, 0, sizeof( app.input_text ) );
+        }
+
+        else if ( app.active_widget->type == WT_CONTROL )
+        {
+          app.last_key_pressed = -1;
+          handle_control_widget = 1;
+        }
+
+        else if ( app.active_widget->action != NULL )
+        {
+          app.active_widget->action();
+        }
       }
     }
   }

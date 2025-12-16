@@ -171,6 +171,7 @@ typedef struct
   SDL_Surface* surface;
   SDL_Texture* texture;
   char* filename;
+  aRectf_t rect;
 } aImage_t;
 
 typedef struct
@@ -990,7 +991,7 @@ void a_DrawFilledRect( const aRectf_t rect, const aColor_t color );
  *
  * @note For scaling or clipping, use a_BlitTextureRect()
  */
-void a_Blit( aImage_t* img, int x, int y );
+void a_Blit( aImage_t* img, float x, float y );
 
 /**
  * @brief Render texture with scaling
@@ -1013,8 +1014,9 @@ void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale
  * @param scale Scaling factor for the destination size
  *
  */
-void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aImage_t* dest,
-                                   aRectf_t dest_rect, int scale );
+void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,
+                                   aImage_t* dest, aRectf_t* dest_rect,
+                                   float scale );
 
 /**
  * Update the window title text

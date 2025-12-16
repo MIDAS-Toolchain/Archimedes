@@ -62,6 +62,13 @@ aImage_t* a_ImageLoad( const char *filename )
     img->filename = strndup( filename, MAX_FILENAME_LENGTH );
     img->surface = IMG_Load( filename );
     img->texture = SDL_CreateTextureFromSurface( app.renderer, img->surface );
+    
+    img->rect = (aRectf_t){
+      .x = 0,
+      .y = 0,
+      .w = (int)img->surface->w,
+      .h = (int)img->surface->h,
+    };
 
     if ( img->surface == NULL )
     {
