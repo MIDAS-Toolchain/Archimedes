@@ -73,7 +73,9 @@ void a_AnimationPlay( aPoint2f_t pos, aAnimation_t* animation )
     a_TimerStop( animation->animation_timer );
   }
 
-  //display frame
-  a_BlitRect( animation->sprite_sheet, &animation->sprite_rect, &dest, app.options.scale_factor );
+  a_BlitRect( animation->sprite_sheet,
+              &animation->sprite_rect,
+              &dest,
+              app.options.scale_factor );
 }
 

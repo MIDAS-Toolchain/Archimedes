@@ -163,7 +163,7 @@ void a_DoWidget( void )
       }
     }
 
-    if ( app.active_widget != NULL )
+    if ( app.active_widget->type == WT_INPUT || app.active_widget->type == WT_CONTROL )
     {
       if ( app.keyboard[SDL_SCANCODE_SPACE] ||
         app.keyboard[SDL_SCANCODE_RETURN] )

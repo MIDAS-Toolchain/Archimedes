@@ -1068,6 +1068,9 @@ aImage_t* a_ImageLoad( const char *filename );
  */
 int a_ImageCacheCleanUp( void );
 
+aImage_t* a_ImageCreate( void );
+void a_ImageFree( aImage_t* img );
+
 /**
  * @brief Capture the current renderer contents to a PNG file
  *

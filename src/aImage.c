@@ -10,6 +10,7 @@
  *                    Mathew Storm <smattymat@gmail.com>
  */
 
+#include <SDL2/SDL_surface.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <SDL2/SDL_image.h>
@@ -227,6 +228,31 @@ int a_ImageCacheCleanUp( void )
   }
 
   return 0;
+}
+
+aImage_t* a_ImageCreate( void )
+{
+  aImage_t* img = malloc( sizeof( aImage_t ) );
+  if ( img == NULL )
+  {
+    LOG( "Failed to allocate memory for img" );
+  }
+  img->surface = NULL; 
+  img->texture = NULL;
+  img->filename = NULL;
+
+  return img;
+}
+
+void a_ImageFree( aImage_t* img )
+{
+  if ( !img ) return;
+
+  if ( img->filename ) free( img->filename );
+  if ( img->surface )  SDL_FreeSurface( img->surface );
+  if ( img->texture )  SDL_DestroyTexture( img->texture );
+  
+  free( img );
 }
 
 int a_ScreenshotSave( SDL_Renderer *renderer, const char *filename )

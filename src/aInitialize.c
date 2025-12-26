@@ -109,6 +109,9 @@ int a_Init( const int width, const int height, const char *title )
   a_AudioInit(16, 44100);  // 16 channels at 44.1kHz
   a_ImageInit();
   a_InitFonts();
+ 
+  // Seed random number generator
+  srand(time(NULL));
 
   return 0;
 }
