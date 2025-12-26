@@ -237,6 +237,7 @@ aImage_t* a_ImageCreate( void )
   {
     LOG( "Failed to allocate memory for img" );
   }
+
   img->surface = NULL; 
   img->texture = NULL;
   img->filename = NULL;
