@@ -249,9 +249,23 @@ void a_ImageFree( aImage_t* img )
 {
   if ( !img ) return;
 
-  if ( img->filename ) free( img->filename );
-  if ( img->surface )  SDL_FreeSurface( img->surface );
-  if ( img->texture )  SDL_DestroyTexture( img->texture );
+  if ( img->filename )
+  {
+    free( img->filename );
+    img->filename = NULL;
+  }
+
+  if ( img->surface )
+  {
+    SDL_FreeSurface( img->surface );
+    img->surface = NULL; 
+  }
+
+  if ( img->texture )
+  {
+    SDL_DestroyTexture( img->texture );
+    img->texture = NULL;
+  }
   
   free( img );
 }
