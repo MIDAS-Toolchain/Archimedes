@@ -207,6 +207,13 @@ void a_Blit( aImage_t* img, float x, float y )
   // Query texture for its original dimensions
   int temp_w, temp_h;
   SDL_QueryTexture( img->texture, NULL, NULL, &temp_w, &temp_h );
+  
+  if ( img->color_modulate )
+  {
+    SDL_SetTextureColorMod( img->texture,
+                            img->color.r, img->color.g, img->color.b);
+    SDL_SetTextureAlphaMod( img->texture, img->color.a );
+  }
 
   SDL_FRect dest;
   dest.x = x;
@@ -215,6 +222,13 @@ void a_Blit( aImage_t* img, float x, float y )
   dest.h = temp_h;
   
   SDL_RenderCopyF( app.renderer, img->texture, NULL, &dest );
+  
+  if ( img->color_modulate )
+  {
+    SDL_SetTextureColorMod( img->texture,
+                            255, 255, 255);
+    SDL_SetTextureAlphaMod( img->texture, 255 );
+  }
 }
 
 void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale )
@@ -254,8 +268,22 @@ void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale
   {
     SDL_QueryTexture( img->texture, NULL, NULL, &temp_src.w, &temp_src.h );
   }
+  
+  if ( img->color_modulate )
+  {
+    SDL_SetTextureColorMod( img->texture,
+                            img->color.r, img->color.g, img->color.b);
+    SDL_SetTextureAlphaMod( img->texture, img->color.a );
+  }
 
   SDL_RenderCopyF( app.renderer, img->texture, &temp_src, &temp_dest );
+  
+  if ( img->color_modulate )
+  {
+    SDL_SetTextureColorMod( img->texture,
+                            255, 255, 255);
+    SDL_SetTextureAlphaMod( img->texture, 255 );
+  }
 }
 
 void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,

@@ -55,6 +55,7 @@ aImage_t* a_ImageLoad( const char *filename )
     img->surface = NULL;
     img->texture = NULL;
     img->filename = NULL;
+    img->color_modulate = 0;
   }
 
   if ( img->surface == NULL )

@@ -168,19 +168,21 @@ typedef struct
 
 typedef struct
 {
-  SDL_Surface* surface;
-  SDL_Texture* texture;
-  char* filename;
-  aRectf_t rect;
-} aImage_t;
-
-typedef struct
-{
   uint8_t r;
   uint8_t g;
   uint8_t b;
   uint8_t a;
 } aColor_t;
+
+typedef struct
+{
+  SDL_Surface* surface;
+  SDL_Texture* texture;
+  char* filename;
+  aRectf_t rect;
+  int color_modulate;
+  aColor_t color;
+} aImage_t;
 
 typedef struct
 {
