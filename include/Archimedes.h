@@ -55,6 +55,9 @@
 #define MAX_WIDGET_IMAGE 4
 #define MAX_WIDGET_COUNT 256
 
+#define PAN_FACTOR 0.05f
+#define ZOOM_FACTOR 0.9f
+
 // Text system error codes
 #define ARCH_TEXT_SUCCESS 0
 #define ARCH_TEXT_ERROR_NULL_POINTER -1
@@ -1466,6 +1469,9 @@ uint8_t a_ViewportIsPointVisible( aPoint2f_t point );
 
 void a_ViewportDrawPoint( aPoint3f_t p, aColor_t color );
 void a_ViewportDrawRect( aRectf_t rect, aColor_t color );
+void a_ViewportBlit( aImage_t* img, float x, float y );
+
+void a_ViewportInput( aRectf_t* viewport, float width, float height );
 
 /*
 ---------------------------------------------------------------

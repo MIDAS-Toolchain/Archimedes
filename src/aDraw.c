@@ -106,6 +106,7 @@ void a_DrawCircle( const int posX, const int posY, const int radius, const aColo
 
     decision += 8 * x + 4;
   }
+  SDL_SetRenderDrawColor(app.renderer, 255, 255, 255, 255);
   SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_NONE );
 }
 

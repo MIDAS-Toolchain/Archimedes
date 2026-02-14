@@ -10,6 +10,11 @@
 
 #include "Archimedes.h"
 
+static int prev_mouse_x = 0;
+static int prev_mouse_y = 0;
+static int panning = 0;
+static aPoint2f_t scale = {0};
+
 aPoint2f_t a_ViewportCalculateScale( void )
 {
   aPoint2f_t scale = { .x = (float)SCREEN_WIDTH  / ( app.g_viewport.w * 2.0f ),
@@ -87,5 +92,142 @@ void a_ViewportDrawRect( aRectf_t rect, aColor_t color )
   SDL_RenderDrawRect( app.renderer, &r );
   SDL_SetRenderDrawColor(app.renderer, 255, 255, 255, 255);
   SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_NONE );
+}
+
+void a_ViewportBlit( aImage_t* img, float x, float y )
+{
+  aPoint2f_t current_scale = a_ViewportCalculateScale();
+
+  float viewport_x1 = app.g_viewport.x - app.g_viewport.w;
+  float viewport_y1 = app.g_viewport.y - app.g_viewport.h;
+
+  float world_x1 = x - img->rect.w;
+  float world_y1 = y - img->rect.h;
+
+  float world_width  = img->rect.w;
+  float world_height = img->rect.h;
+
+  SDL_FRect r = {
+    ( ( world_x1 - viewport_x1 ) * current_scale.x ),
+    ( ( world_y1 - viewport_y1 ) * current_scale.y ),
+    ( world_width  * current_scale.x ),
+    ( world_height * current_scale.y )
+  };
+  
+  if ( img->color_modulate )
+  {
+    SDL_SetTextureColorMod( img->texture,
+                            img->color.r, img->color.g, img->color.b);
+    SDL_SetTextureAlphaMod( img->texture, img->color.a );
+  }
+  
+  SDL_RenderCopyF( app.renderer, img->texture, NULL, &r );
+  
+  if ( img->color_modulate )
+  {
+    SDL_SetTextureColorMod( img->texture,
+                            255, 255, 255);
+    SDL_SetTextureAlphaMod( img->texture, 255 );
+  }
+}
+
+void a_ViewportInput( aRectf_t* viewport, float width, float height )
+{
+  scale = a_ViewportCalculateScale();
+
+  float pan_dist_x = viewport->w * PAN_FACTOR;
+  float pan_dist_y = viewport->h * PAN_FACTOR;
+  
+  if ( app.keyboard[A_W] == 1 )
+  {
+    app.keyboard[A_W] = 0;
+    viewport->y -= pan_dist_y;
+  }
+  
+  if ( app.keyboard[A_A] == 1 )
+  {
+    app.keyboard[A_A] = 0;
+    viewport->x -= pan_dist_x;
+
+  }
+  
+  if ( app.keyboard[A_S] == 1 )
+  {
+    app.keyboard[A_S] = 0;
+    viewport->y += pan_dist_y;
+
+  }
+  
+  if ( app.keyboard[A_D] == 1 )
+  {
+    app.keyboard[A_D] = 0;
+    viewport->x += pan_dist_x;
+
+  }
+  
+  if ( app.mouse.button == 1 )
+  {
+    if ( !panning )
+    {
+      prev_mouse_x = app.mouse.x;
+      prev_mouse_y = app.mouse.y;
+
+    }
+    panning = 1;
+  }
+  
+  if ( app.mouse.state == 0 )
+  {
+    panning = 0;
+    app.mouse.button = 0;
+  }
+
+  if ( app.mouse.wheel == 1 )
+  {
+    app.mouse.wheel = 0;
+    viewport->w *= ZOOM_FACTOR;
+    viewport->h *= ZOOM_FACTOR;
+
+    if ( viewport->w < 1.0f ) viewport->w = 1.0f;
+    if ( viewport->h < 1.0f ) viewport->h = 1.0f;
+
+  }
+ 
+  if ( app.mouse.wheel == -1 )
+  {
+    app.mouse.wheel = 0;
+    viewport->w /= ZOOM_FACTOR;
+    viewport->h /= ZOOM_FACTOR;
+
+    if ( viewport->w > width / 2.0f ) viewport->w = width / 2.0f;
+    if ( viewport->h > height / 2.0f ) viewport->h = height / 2.0f;
+    
+  }
+  
+  if ( app.mouse.motion == 1 )
+  {
+    if ( panning == 1 )
+    {
+      int delta_x = app.mouse.x - prev_mouse_x;
+      int delta_y = app.mouse.y - prev_mouse_y;
+
+      float delta_wx = (float)delta_x / scale.x;
+      float delta_wy = (float)delta_y / scale.y;
+
+      viewport->x -= delta_wx;
+      viewport->y -= delta_wy;
+
+      prev_mouse_x = app.mouse.x;
+      prev_mouse_y = app.mouse.y;
+
+    }
+
+  }
+
+  if ( viewport->x < viewport->w ) viewport->x = viewport->w;
+  if ( viewport->x > width - viewport->w ) viewport->x = width - viewport->w;
+  if ( viewport->y < viewport->h ) viewport->y = viewport->h;
+  if ( viewport->y > height - viewport->h ) viewport->y = height - viewport->h;
+
 }
 
