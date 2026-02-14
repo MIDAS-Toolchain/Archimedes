@@ -1073,7 +1073,7 @@ aImage_t* a_ImageLoad( const char *filename );
  */
 int a_ImageCacheCleanUp( void );
 
-aImage_t* a_ImageCreate( void );
+aImage_t* a_ImageCreate( int width, int height );
 void a_ImageFree( aImage_t* img );
 
 /**

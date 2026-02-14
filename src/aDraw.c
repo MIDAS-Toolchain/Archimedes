@@ -291,34 +291,34 @@ void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,
                                    aImage_t* dest, aRectf_t* dest_rect,
                                    float scale )
 {
-  if ( !src ) return;
-  if ( !dest ) return;
+  if ( !src || !dest || !src_rect || !dest_rect ) return;
 
   SDL_Rect temp_src_rect = {0};
   SDL_Rect temp_dest_rect = (SDL_Rect){
-    .x = dest_rect->x,
-    .y = dest_rect->y,
-    .w = dest_rect->w * scale,
-    .h = dest_rect->h * scale,
+    .x = (int)dest_rect->x,
+    .y = (int)dest_rect->y,
+    .w = (int)dest_rect->w * scale,
+    .h = (int)dest_rect->h * scale,
   };
 
   if ( src_rect != NULL )
   {
     temp_src_rect = (SDL_Rect){
-      .x = src_rect->x,
-      .y = src_rect->y,
-      .w = src_rect->w,
-      .h = src_rect->h,
+      .x = (int)src_rect->x,
+      .y = (int)src_rect->y,
+      .w = (int)src_rect->w,
+      .h = (int)src_rect->h,
     };
   }
   
   else
   {
-    SDL_QueryTexture( src->texture, NULL, NULL,
-                      &temp_src_rect.w, &temp_src_rect.h );
+    temp_src_rect = (SDL_Rect){ 0, 0, src->surface->w, src->surface->h };
   }
 
   SDL_BlitSurface( src->surface, &temp_src_rect, dest->surface, &temp_dest_rect );
+
+  if ( dest->texture ) SDL_DestroyTexture( dest->texture );
   dest->texture = SDL_CreateTextureFromSurface( app.renderer, dest->surface );
 }
 

@@ -142,7 +142,7 @@ static int a_CacheImage( aImageCache_t* head, aImage_t* img )
       current = current->next;
     }
 
-    current = new_bucket;
+    current->next = new_bucket;
   }
 
   else
@@ -221,6 +221,7 @@ int a_ImageCacheCleanUp( void )
 
       }
 
+      free( current->image );
       free( current );
       current = next;
     }
@@ -231,7 +232,7 @@ int a_ImageCacheCleanUp( void )
   return 0;
 }
 
-aImage_t* a_ImageCreate( void )
+aImage_t* a_ImageCreate( int width, int height )
 {
   aImage_t* img = malloc( sizeof( aImage_t ) );
   if ( img == NULL )
@@ -239,9 +240,22 @@ aImage_t* a_ImageCreate( void )
     LOG( "Failed to allocate memory for img" );
   }
 
-  img->surface = NULL; 
+  img->surface = SDL_CreateRGBSurface( 0, width, height, 32,
+                                       0x00FF0000,
+                                       0x0000FF00,
+                                       0x000000FF,
+                                       0xFF000000);
+  if ( img->surface == NULL )
+  {
+    free( img );
+    return NULL;
+  }
+
   img->texture = NULL;
   img->filename = NULL;
+  img->color_modulate = 0;
+  img->color = white;
+  img->rect = (aRectf_t){ 0, 0, width, height };
 
   return img;
 }
