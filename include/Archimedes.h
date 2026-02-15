@@ -322,15 +322,10 @@ typedef struct
   int8_t  wheel;
 } aMouse_t;
 
-typedef struct _aImageCacheNode_t
+typedef struct _aImageCache_t
 {
   aImage_t* image;
-  struct _aImageCacheNode_t* next;
-} aImageCacheNode_t;
-
-typedef struct
-{
-  aImageCacheNode_t* head;
+  struct _aImageCache_t* next;
 } aImageCache_t;
 
 typedef struct
@@ -387,6 +382,23 @@ typedef struct _textures{
   SDL_Texture* texture;
   struct _textures* next;
 } aTexture_t;
+
+typedef struct _tile
+{
+  aImage_t* img;
+  uint8_t solid;
+} aTile_t;
+
+typedef struct _world
+{
+  aTile_t* map;
+} aWorld_t;
+
+typedef struct _tile_bitmask
+{
+  uint8_t mask;
+  aPoint2i_t img_pos;
+} aTileBitmask_t;
 
 /*
 ---------------------------------------------------------------

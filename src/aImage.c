@@ -17,25 +17,17 @@
 
 #include "Archimedes.h"
 
-static int a_CacheImage( aImageCache_t* head, aImage_t* img );
-static aImage_t* a_GetImageFromCacheByFilename( aImageCache_t* head,
-                                                   const char* filename );
+static aImageCache_t  img_head;
+static aImageCache_t* img_tail;
+
+static int a_CacheImage( char* filename, aImage_t* img );
+static aImage_t* a_GetImage( const char* filename );
 
 int a_ImageInit( void )
 {
-  app.img_cache = ( aImageCache_t* )malloc( sizeof( aImageCache_t ) );
-  if ( app.img_cache == NULL )
-  {
-    aError_t new_error;
-    new_error.error_type = FATAL;
-    snprintf( new_error.error_msg, MAX_LINE_LENGTH, "%s: Failed to allocate memory for cache",
-              log_level_strings[new_error.error_type] );
-    LOG( new_error.error_msg );
+  memset( &img_head, 0, sizeof( aImageCache_t ) );
+  img_tail = &img_head;
 
-    return 1;
-  }
-
-  app.img_cache->head = NULL;
   return 0;
 }
 
@@ -43,7 +35,7 @@ aImage_t* a_ImageLoad( const char *filename )
 {
   aImage_t *img = NULL;
 
-  img = a_GetImageFromCacheByFilename( app.img_cache, filename );
+  img = a_GetImage( filename );
   
   if ( img == NULL )
   {
@@ -52,14 +44,7 @@ aImage_t* a_ImageLoad( const char *filename )
     {
       LOG( "Failed to allocate memory for img" );
     }
-    img->surface = NULL;
-    img->texture = NULL;
-    img->filename = NULL;
-    img->color_modulate = 0;
-  }
-
-  if ( img->surface == NULL )
-  {
+    
     //SDL_LogMessage( SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, "Loading %s", filename );
     img->filename = strndup( filename, MAX_FILENAME_LENGTH );
     img->surface = IMG_Load( filename );
@@ -83,85 +68,34 @@ aImage_t* a_ImageLoad( const char *filename )
       return NULL;
     }
 
-    a_CacheImage( app.img_cache, img );
+    a_CacheImage( img->filename, img );
   }
 
   return img;
 }
 
-static int a_CacheImage( aImageCache_t* head, aImage_t* img )
+static int a_CacheImage( char* filename, aImage_t* img )
 {
-  aImageCacheNode_t* new_bucket = ( aImageCacheNode_t* )malloc( sizeof( aImageCacheNode_t ) );
-  if ( new_bucket == NULL )
-  {
-    aError_t new_error;
-    new_error.error_type = FATAL;
-    snprintf( new_error.error_msg, MAX_LINE_LENGTH, "%s: Failed to allocate memory for a new bucket",
-             log_level_strings[new_error.error_type] );
-    LOG( new_error.error_msg );
-
-    return 1;
-  }
-
-  new_bucket->image = malloc( sizeof( aImage_t ) );
-  if ( new_bucket->image == NULL )
-  {
-    aError_t new_error;
-    new_error.error_type = FATAL;
-    snprintf( new_error.error_msg, MAX_LINE_LENGTH, "%s: Failed to allocate memory for a new bucket",
-             log_level_strings[new_error.error_type] );
-    LOG( new_error.error_msg );
-    
-    return 1;
-  }
-
-  new_bucket->image->filename = malloc( MAX_FILENAME_LENGTH );
-  if ( new_bucket->image->filename == NULL )
-  {
-    aError_t new_error;
-    new_error.error_type = FATAL;
-    snprintf( new_error.error_msg, MAX_LINE_LENGTH,
-              "%s: Failed to allocate memory for new bucket's filename",
-              log_level_strings[new_error.error_type] );
-    LOG( new_error.error_msg );
-    
-    return 1;
-  }
-
-  new_bucket->image->surface = img->surface;
-  new_bucket->image->texture = img->texture;
-  STRNCPY( new_bucket->image->filename, img->filename, MAX_FILENAME_LENGTH );
-  new_bucket->next = NULL;
-
-  if ( head->head != NULL )
-  {
-
-    aImageCacheNode_t *current = head->head;
-    while ( current->next != NULL )
-    {
-      current = current->next;
-    }
-
-    current->next = new_bucket;
-  }
-
-  else
-  {
-    head->head = new_bucket;
-  }
+  aImageCache_t* new_cache = malloc( sizeof( aImageCache_t ) );
+  if ( new_cache == NULL ) return 1;
+  memset( new_cache, 0, sizeof( aImageCache_t ) );
+  img_tail->next = new_cache;
+  img_tail = new_cache;
+  STRNCPY( filename, img->filename, MAX_FILENAME_LENGTH );
+  new_cache->image = img;
 
   return 0;
 }
 
-static aImage_t* a_GetImageFromCacheByFilename( aImageCache_t* head, const char* filename )
+static aImage_t* a_GetImage( const char* filename )
 {
-  aImageCacheNode_t* current;
+  aImageCache_t* temp;
 
-  for ( current = head->head; current != NULL; current = current->next )
+  for ( temp = img_head.next; temp != NULL; temp = temp->next )
   {
-    if ( strcmp( current->image->filename, filename ) == 0 )
+    if ( strcmp( temp->image->filename, filename ) == 0 )
     {
-      return current->image;
+      return temp->image;
     }
   }
 
@@ -170,65 +104,25 @@ static aImage_t* a_GetImageFromCacheByFilename( aImageCache_t* head, const char*
 
 int a_ImageCacheCleanUp( void )
 {
-  if ( app.img_cache == NULL )
-      // FAIL: img_cache is NULL
+  aImageCache_t* current = img_head.next;
+  aImageCache_t* next_node;
+  
+  while ( current != NULL )
   {
-    aError_t new_error;
-    new_error.error_type = WARNING;
-    snprintf( new_error.error_msg, MAX_LINE_LENGTH, "%s: img_cache is NULL",
-             log_level_strings[new_error.error_type] );
-    LOG( new_error.error_msg );
-    return 1;
-  }
-
-  if ( app.img_cache->head == NULL )
-  {
-      // FAIL: img_cache->head is NULL
-    aError_t new_error;
-    new_error.error_type = WARNING;
-    snprintf( new_error.error_msg, MAX_LINE_LENGTH, "%s: img_cache->head is NULL",
-             log_level_strings[new_error.error_type] );
-    LOG( new_error.error_msg );
-    return 0;
-  }
-
-  else
-  {
-    aImageCacheNode_t* current = app.img_cache->head;
-    aImageCacheNode_t* next = NULL;
-
-    while ( current != NULL )
+    next_node = current->next;
+    if ( current->image != NULL )
     {
-      next = current->next;
-      if ( current->image->surface != NULL )
-      {
-        SDL_FreeSurface( current->image->surface );
-        current->image->surface = NULL;
-
-      }
-     
-      if ( current->image->filename != NULL )
-      {
-        free( current->image->filename );
-        current->image->filename = NULL;
-
-      }
-      
-      if ( current->image->texture != NULL )
-      {
-        SDL_DestroyTexture( current->image->texture );
-        current->image->texture = NULL;
-
-      }
-
-      free( current->image );
-      free( current );
-      current = next;
+      a_ImageFree( current->image );
     }
 
-    app.img_cache->head = NULL;
+    free( current );
+
+    current = next_node;
   }
 
+  img_head.next = NULL;
+  img_tail = &img_head;
+  
   return 0;
 }
 
