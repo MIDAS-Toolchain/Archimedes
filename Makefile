@@ -44,6 +44,7 @@ EMSCRIP_C_FLAGS = $(C_FLAGS) $(EFLAGS)
 # ====================================================================
 
 ARCHIMEDES_SRCS = \
+    a2DWorld.c \
     aAnimation.c \
     aAudio.c \
     aAUF.c \
@@ -55,6 +56,7 @@ ARCHIMEDES_SRCS = \
     aInput.c \
 	  aLayout.c\
     aText.c \
+    aTileBitmask.c \
     aTimer.c \
 	  aUtils.c \
 	  aViewport.c \

@@ -189,6 +189,15 @@ typedef struct
 
 typedef struct
 {
+  aImage_t* sheet;
+  int s_width, s_height;
+  int img_width, img_height;
+  int img_count;
+  int v_count, h_count;
+} aSpriteSheet_t;
+
+typedef struct
+{
   uint32_t start_ticks;
   uint32_t paused_ticks;
   uint8_t paused;
@@ -274,7 +283,8 @@ typedef struct
   int value;
 } aControlWidget_t;
 
-typedef struct {
+typedef struct
+{
   char magic_number[8];
   uint8_t version;
   uint16_t num_widgets;
@@ -293,7 +303,6 @@ typedef struct _aAUFNode_t {
   int value_int;
   double value_double;
   char* string;
-
 } aAUFNode_t;
 
 typedef struct _aAUF_t
@@ -301,7 +310,6 @@ typedef struct _aAUF_t
   aAUFNode_t* head;
   aAUFNode_t* tail;
   int size;
-
 } aAUF_t;
 
 typedef struct
@@ -385,13 +393,15 @@ typedef struct _textures{
 
 typedef struct _tile
 {
-  aImage_t* img;
+  uint32_t tile;
   uint8_t solid;
 } aTile_t;
 
 typedef struct _world
 {
   aTile_t* map;
+  int tile_count;
+  int rows, cols;
 } aWorld_t;
 
 typedef struct _tile_bitmask
@@ -2106,6 +2116,24 @@ aAnimation_t* a_AnimationCreate( const char* filename, const float w,
                                  const uint32_t frame_duration );
 void a_AnimationFree( aAnimation_t* animation );
 void a_AnimationPlay( aPoint2f_t pos, aAnimation_t* animtion );
+
+/*
+---------------------------------------------------------------
+---                     Sprite Sheet                        ---
+---------------------------------------------------------------
+*/
+
+aSpriteSheet_t* a_SpriteSheetCreate( const char* filename,
+                                     int sprite_w, int sprite_h );
+aImage_t* a_ImageFromSpriteSheet( aSpriteSheet_t* sheet, int x, int y );
+
+/*
+---------------------------------------------------------------
+---                      2D World                           ---
+---------------------------------------------------------------
+*/
+
+aWorld_t* a_2DWorldCreate( int width, int height, int tile_w, int tile_h );
 
 #endif
 
