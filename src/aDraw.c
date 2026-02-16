@@ -291,15 +291,32 @@ void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,
                                    aImage_t* dest, aRectf_t* dest_rect,
                                    float scale )
 {
-  if ( !src || !dest || !src_rect || !dest_rect ) return;
+  if ( ( !src || !dest ) ) return;
+  if ( scale < 0.0f ) return;
 
   SDL_Rect temp_src_rect = {0};
-  SDL_Rect temp_dest_rect = (SDL_Rect){
-    .x = (int)dest_rect->x,
-    .y = (int)dest_rect->y,
-    .w = (int)dest_rect->w * scale,
-    .h = (int)dest_rect->h * scale,
-  };
+  SDL_Rect temp_dest_rect = {0};
+  
+  if ( dest_rect != NULL )
+  {
+    temp_dest_rect = (SDL_Rect){
+      .x = (int)dest_rect->x,
+      .y = (int)dest_rect->y,
+      .w = (int)dest_rect->w * scale,
+      .h = (int)dest_rect->h * scale,
+    };
+  }
+  
+  else
+  {
+    temp_dest_rect = (SDL_Rect){
+      .x = 0,
+      .y = 0,
+      .w = (int)dest->rect.w * scale,
+      .h = (int)dest->rect.h * scale,
+    };
+
+  }
 
   if ( src_rect != NULL )
   {
