@@ -29,8 +29,19 @@ const aPoint2i_t neighbor_offsets[] = {
 
 aTileBitmask_t* a_TileBitmaskCreate( aWorld_t* world )
 {
+  aTileBitmask_t* new_bitmask = malloc( sizeof( aTileBitmask_t ) *
+                                        ( world->tile_count ) );
+  if ( new_bitmask == NULL ) return NULL;
+  
+  int tile_index = 0;
 
-  return NULL;
+  for ( int i = 0; i < world->tile_count; i++ )
+  {
+    new_bitmask->mask = get_bitmask( world, tile_index );
+    tile_index++;
+  }
+
+  return new_bitmask;
 }
 
 static uint8_t get_bitmask( aWorld_t* world, int index )

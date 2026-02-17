@@ -1,0 +1,43 @@
+#include <stdio.h>
+
+#include <Archimedes.h>
+
+static void sLogic( float );
+static void sDraw( float );
+
+void Init_Stage( void )
+{
+  app.delegate.logic = sLogic;
+  app.delegate.draw  = sDraw;
+}
+
+static void sLogic( float dt )
+{
+  a_DoInput();
+
+  if ( app.keyboard[SDL_SCANCODE_ESCAPE] == 1 )
+  {
+    app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
+    app.running = 0;
+    return;
+  }
+}
+
+static void sDraw( float dt )
+{
+  char buffer[MAX_LINE_LENGTH];
+  snprintf(buffer, MAX_NAME_LENGTH, "%f", app.time.avg_FPS );
+
+  aTextStyle_t text_style = {
+    .type = FONT_CODE_PAGE_437,
+    .fg = white,
+    .bg = black,
+    .align = TEXT_ALIGN_CENTER,
+    .wrap_width = 0,
+    .scale = 1.0f,
+    .padding = 0
+  };
+
+  a_DrawText( buffer, 600, 100, text_style );
+}
+
