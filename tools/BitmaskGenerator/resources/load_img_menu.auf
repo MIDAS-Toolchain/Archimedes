@@ -5,7 +5,7 @@ toggle_label:1
 boxed:1
 hidden:0
 padding:6
-flex:1
+flex:3
 spacing:10
 texture:1
 (w,h):(200,200)
@@ -27,7 +27,7 @@ bg:[164,221,219,255]
 [[WT_BUTTON.load]]
 (x,y):(20,20)
 label:"Load"
-toggle_label:0
+toggle_label:1
 boxed:1
 hidden:0
 padding:1

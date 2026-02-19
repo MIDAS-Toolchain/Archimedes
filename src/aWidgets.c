@@ -1071,6 +1071,11 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
         //temp_x += ( current->w + container->spacing );
       }
 
+      else if ( w->flex == 3 )
+      {
+        
+      }
+
       else
       {
         if ( node_x != NULL )

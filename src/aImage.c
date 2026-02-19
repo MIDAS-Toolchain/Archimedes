@@ -50,6 +50,9 @@ aImage_t* a_ImageLoad( const char *filename )
     img->surface = IMG_Load( filename );
     img->texture = SDL_CreateTextureFromSurface( app.renderer, img->surface );
     
+    img->color_modulate = 0;
+    img->color = black;
+    
     img->rect = (aRectf_t){
       .x = 0,
       .y = 0,

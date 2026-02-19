@@ -22,11 +22,17 @@ static void sLogic( float dt )
 
   a_DoWidget();
   
-  if ( app.keyboard[SDL_SCANCODE_ESCAPE] == 1 )
+  if ( app.keyboard[A_ESCAPE] == 1 )
   {
-    app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
+    app.keyboard[A_ESCAPE] = 0;
     app.running = 0;
     return;
+  }
+  
+  if ( app.keyboard[A_R] == 1 )
+  {
+    app.keyboard[A_R] = 0;
+    a_WidgetsInit( "resources/load_img_menu.auf" );
   }
 }
 
