@@ -46,7 +46,7 @@ aImage_t* a_ImageLoad( const char *filename )
     }
     
     //SDL_LogMessage( SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, "Loading %s", filename );
-    img->filename = strndup( filename, MAX_FILENAME_LENGTH );
+    img->filename = a_STR_NDUP( filename, MAX_FILENAME_LENGTH );
     img->surface = IMG_Load( filename );
     img->texture = SDL_CreateTextureFromSurface( app.renderer, img->surface );
     

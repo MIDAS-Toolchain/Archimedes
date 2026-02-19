@@ -22,7 +22,7 @@ char* a_ReadFile( const char* filename, int* file_size )
   if ( file == NULL )
   {
     printf( "Error loading file: %s\n", filename );
-    return NULL;
+    exit(EXIT_FAILURE);
   }
 
   fseek( file, 0, SEEK_END );

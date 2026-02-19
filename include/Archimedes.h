@@ -274,6 +274,7 @@ typedef struct
 {
   aRectf_t rect;
   int max_length;
+  int text_offset;
   char* text;
 } aInputWidget_t;
 

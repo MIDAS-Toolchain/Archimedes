@@ -61,6 +61,8 @@ void a_DoWidget( void )
     aWidget_t* current = GetCurrentWidget();
     if ( current != NULL )
     {
+      //current->state = WI_BACKGROUND;
+
       if ( app.mouse.button == 1 && app.mouse.state == 1 )
       {
         if ( current->action != NULL )
@@ -194,10 +196,30 @@ void a_DoWidget( void )
   else if ( handle_input_widget )
   {
     DoInputWidget();
+    if ( app.keyboard[A_ESCAPE] == 1 )
+    {
+      app.keyboard[A_ESCAPE] = 0;
+
+      handle_input_widget = 0;
+    }
+
+    if( app.mouse.button == 1 && app.mouse.clicks == 2 )
+    {
+      app.mouse.button = 0;
+      app.mouse.clicks = 0;
+      aInputWidget_t* curr_input = (aInputWidget_t*)app.active_widget->data;
+      memset( curr_input->text, 0, MAX_NAME_LENGTH );
+    }
   }
 
   else if( handle_control_widget )
   {
+    if ( app.keyboard[A_ESCAPE] == 1 )
+    {
+      app.keyboard[A_ESCAPE] = 0;
+
+      handle_control_widget = 0;
+    }
     DoControlWidget();
   }
 }
@@ -679,6 +701,7 @@ static void CreateWidget( aAUFNode_t* root )
 static void CreateButtonWidget( aWidget_t* w )
 {
   a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
+  w->state = WI_BACKGROUND;
 }
 
 /**
@@ -810,6 +833,7 @@ static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root )
   w->data = input;
 
   input->max_length = a_AUFGetObjectItem( root, "max_length" )->value_int;
+  input->text_offset = a_AUFGetObjectItem( root, "text_offset" )->value_int;
   input->text = malloc(  input->max_length + 1 );
 
   STRNCPY( input->text, "...", MAX_INPUT_LENGTH );
@@ -819,7 +843,7 @@ static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root )
     a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
   }
 
-  input->rect.x = w->rect.x + w->rect.w + 50;
+  input->rect.x = w->rect.x + w->rect.w + input->text_offset;
   input->rect.y = w->rect.y;
   a_CalcTextDimensions( input->text, app.font_type,
                         &input->rect.w, &input->rect.h );
@@ -1360,7 +1384,13 @@ static void DrawInputWidget( aWidget_t* w )
       a_DrawFilledRect( rect, w->bg );
     }
 
-    aTextStyle_t style = { .type = app.font_type, .fg = c, .bg = {0,0,0,0}, .align = TEXT_ALIGN_LEFT, .wrap_width = 0, .scale = 1.0f, .padding = 0 };
+    aTextStyle_t style = { .type = app.font_type,
+                           .fg = c,
+                           .bg = {0,0,0,0},
+                           .align = TEXT_ALIGN_LEFT,
+                           .wrap_width = 0,
+                           .scale = 1.0f,
+                           .padding = 0 };
     a_DrawText( w->label, w->rect.x, w->rect.y, style );
 
     a_DrawText( input->text, input->rect.x, input->rect.y, style );

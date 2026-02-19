@@ -109,7 +109,7 @@ static int ParserWidgetToNode( aAUFNode_t* node, char** line, int nl_count, int 
       if ( g_container == NULL )
       {
       aAUFNode_t* container = a_AUFNodeCreation();
-      container->string = strdup( "container" );
+      container->string = a_STR_NDUP( "container", MAX_NAME_LENGTH );
       widget_count++;
       a_AUFNodeAddChild( node, container );
       g_container = container;

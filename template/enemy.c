@@ -77,7 +77,7 @@ int enemy_spawn(float x, float y)
       enemies[i].y = y;
       enemies[i].vx = 0.0f;
       enemies[i].vy = 0.0f;
-      enemies[i].target_angle = RANDF(0, 2.0f * M_PI);
+      enemies[i].target_angle = RANDF(0, 2.0f * PI);
       enemies[i].next_retarget = retarget_interval;
       enemies[i].state = ENEMY_STATE_ALIVE;
       enemies[i].active = 1;
@@ -119,7 +119,7 @@ static void spawn_blood_splatter(float x, float y, float bullet_vx, float bullet
 
         // Particle velocity: bullet direction + wide spread for explosion effect
         float speed_base = RANDF(150.0f, 400.0f);
-        float spread_angle = RANDF(-M_PI * 0.6f, M_PI * 0.6f); // 120° spread
+        float spread_angle = RANDF(-PI * 0.6f, PI * 0.6f); // 120° spread
         float cos_spread = cosf(spread_angle);
         float sin_spread = sinf(spread_angle);
 
@@ -543,7 +543,7 @@ void enemy_update(float dt, float player_x, float player_y, float player_vx, flo
       // If duration expired (failed to hit player), enter REPOSITIONING
       if (e->attack_duration <= 0.0f) {
         e->state = ENEMY_STATE_REPOSITIONING;
-        e->target_angle = RANDF(0, 2.0f * M_PI);
+        e->target_angle = RANDF(0, 2.0f * PI);
         e->reposition_duration = RANDF(2.0f, 5.0f);
         e->stuck_timer = 0.0f;
       }
@@ -625,7 +625,7 @@ void enemy_update(float dt, float player_x, float player_y, float player_vx, flo
       // If reached flanking position (within 10px), reposition again
       if (dist_to_flank < 10.0f) {
         e->state = ENEMY_STATE_REPOSITIONING;
-        e->target_angle = RANDF(0, 2.0f * M_PI);
+        e->target_angle = RANDF(0, 2.0f * PI);
         e->reposition_duration = RANDF(2.0f, 5.0f);
         e->stuck_timer = 0.0f;
       } else {
