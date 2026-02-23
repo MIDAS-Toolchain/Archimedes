@@ -1,4 +1,4 @@
-/* 
+/*
  * src/aUtils.c
  *
  * This file defines the utility functions used in Archimedes.
@@ -48,7 +48,7 @@ char* a_ReadFile( const char* filename, int* file_size )
   fclose(file);
 
   fileString[fileSize] = '\0';
-  
+
   *file_size = fileSize;
 
   return fileString;
@@ -57,7 +57,7 @@ char* a_ReadFile( const char* filename, int* file_size )
 char* a_STR_NDUP( const char* str, size_t len )
 {
   char* new_string = malloc( len + 1 );
-  
+
   if ( new_string )
   {
     memcpy( new_string, str, len );
@@ -146,7 +146,7 @@ char** a_ParseLinesInFile( const char* file_string, const int file_size,
     printf("Failed to allocate memory for line\n");
     return NULL;
   }
-  
+
   int line_start  = 0;
   int line_end    = 0;
   int line_length = 0;
@@ -158,7 +158,7 @@ char** a_ParseLinesInFile( const char* file_string, const int file_size,
     {
       line_end = i;
       line_length = line_end - line_start;
-      
+
       if ( line_length == 0 )
       {
         line_start = line_end + 1;
@@ -168,7 +168,7 @@ char** a_ParseLinesInFile( const char* file_string, const int file_size,
         line_count++;
         continue;
       }
-      
+
       new_line[line_count] = ( char* )malloc( sizeof(char) * ( line_length + 1 ) );
       if ( new_line[line_count] == NULL )
       {
@@ -189,7 +189,7 @@ char** a_ParseLinesInFile( const char* file_string, const int file_size,
       new_line[line_count][line_length] = '\0';
 
       line_start = line_end + 1;
-      
+
       line_count++;
 
     }
@@ -197,4 +197,3 @@ char** a_ParseLinesInFile( const char* file_string, const int file_size,
 
   return new_line;
 }
-

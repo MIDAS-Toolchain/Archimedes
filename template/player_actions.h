@@ -27,13 +27,6 @@ void player_update(float dt);
 void player_draw(aImage_t* img);
 
 /**
- * @brief Fire a bullet toward target position
- * @param target_x Target X coordinate
- * @param target_y Target Y coordinate
- */
-void player_shoot(int target_x, int target_y);
-
-/**
  * @brief Get player center X position (for enemy targeting)
  * @return Player center X coordinate
  */
@@ -79,5 +72,22 @@ float player_get_vx(void);
  * @return Player velocity Y
  */
 float player_get_vy(void);
+
+void player_fire_at_nearest(void);
+void player_do_spin_attack(float radius);
+
+// Dash
+void player_dash(void);
+float player_get_dash_cooldown_progress(void);
+int player_is_dashing(void);
+
+int player_take_damage(int amount);
+void player_heal(int amount);
+void player_draw_screen_flash(void);
+int player_get_hp(void);
+int player_get_max_hp(void);
+int player_is_alive(void);
+int player_is_invincible(void);
+float player_get_heal_flash_progress(void);
 
 #endif /* PLAYER_ACTIONS_H */

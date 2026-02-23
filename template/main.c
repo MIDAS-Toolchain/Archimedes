@@ -11,12 +11,16 @@
 #include "player_actions.h"
 #include "audio_test.h"
 #include "enemy.h"
+#include "hotbar.h"
+#include "weapons.h"
+#include "drops.h"
 
 // Scene system
 typedef enum {
   SCENE_GAME,
   SCENE_TEST_TEXT,
-  SCENE_AUDIO_TEST
+  SCENE_AUDIO_TEST,
+  SCENE_GAME_OVER
 } Scene_t;
 
 static Scene_t current_scene = SCENE_GAME;
@@ -24,9 +28,19 @@ static Scene_t current_scene = SCENE_GAME;
 // Scene function declarations
 static void scene_game_logic( float dt );
 static void scene_game_draw( float dt );
+static void scene_game_over_logic( float dt );
+static void scene_game_over_draw( float dt );
+static void game_reset( void );
 
 static void aDoLoop( float );
 static void aRenderLoop( float );
+
+// Game over UI
+static FlexBox_t* gameover_flex = NULL;
+#define GAMEOVER_BTN_W 160
+#define GAMEOVER_BTN_H 40
+#define GAMEOVER_BTN_IDX_RETRY 0
+#define GAMEOVER_BTN_IDX_QUIT  1
 
 aImage_t* bullet_img;
 
@@ -51,6 +65,19 @@ static float time_remaining = 15.0f * 60.0f; // 15 minutes in seconds
 #define MAX_BLOOD_PARTICLES 500
 static float spawn_timer = 0.0f;
 static float spawn_interval = 2.0f; // spawn every 2 seconds
+
+// Health drop spawning
+#define HEALTH_DROP_INTERVAL 10.0f
+static float health_drop_timer = 0.0f;
+
+// Timed weapon drops
+#define WEAPON_DROP_TIME   20.0f
+#define WEAPON_DROP_TIME_2 40.0f
+#define WEAPON_DROP_TIME_3 60.0f
+static float game_elapsed_timer = 0.0f;
+static int timed_weapon_dropped = 0;
+static int timed_weapon_dropped_2 = 0;
+static int timed_weapon_dropped_3 = 0;
 
 void aInitGame( void )
 {
@@ -121,22 +148,28 @@ void aInitGame( void )
 
   // Initialize audio test (loads calm BGM and starts playback)
   audio_test_init();
+
+  // Initialize weapons and drops
+  weapons_init();
+  drops_init();
+
+  // Initialize hotbar UI
+  hotbar_init();
 }
 
 static void aDoLoop( float dt )
 {
   a_DoInput();
 
-  // Global ESC to quit (works in all scenes)
-  if ( app.keyboard[ SDL_SCANCODE_ESCAPE ] == 1 )
-  {
-    app.running = 0;
-  }
-
   // Dispatch to current scene
   switch ( current_scene )
   {
     case SCENE_GAME:
+      // ESC to quit from game
+      if ( app.keyboard[ SDL_SCANCODE_ESCAPE ] == 1 )
+      {
+        app.running = 0;
+      }
       scene_game_logic( dt );
       break;
     case SCENE_TEST_TEXT:
@@ -147,12 +180,14 @@ static void aDoLoop( float dt )
       break;
     case SCENE_AUDIO_TEST:
       audio_test_update();
-      // ESC to return to game
       if ( app.keyboard[ SDL_SCANCODE_ESCAPE ] == 1 )
       {
         current_scene = SCENE_GAME;
         app.keyboard[ SDL_SCANCODE_ESCAPE ] = 0;
       }
+      break;
+    case SCENE_GAME_OVER:
+      scene_game_over_logic( dt );
       break;
   }
 }
@@ -161,6 +196,32 @@ static void scene_game_logic( float dt )
 {
   // Update player movement and shooting
   player_update( dt );
+
+  // Check for player death — switch to game over screen
+  if ( !player_is_alive() )
+  {
+    // Create game over UI layout
+    if ( gameover_flex )
+    {
+      a_FlexBoxDestroy( &gameover_flex );
+    }
+    int panel_w = 300;
+    int panel_h = 200;
+    gameover_flex = a_FlexBoxCreate(
+      (SCREEN_WIDTH - panel_w) / 2,
+      (SCREEN_HEIGHT - panel_h) / 2,
+      panel_w, panel_h
+    );
+    a_FlexConfigure( gameover_flex, FLEX_DIR_COLUMN, FLEX_JUSTIFY_CENTER, 16 );
+    a_FlexSetAlign( gameover_flex, FLEX_ALIGN_CENTER );
+    a_FlexSetPadding( gameover_flex, 20 );
+    a_FlexAddItem( gameover_flex, GAMEOVER_BTN_W, GAMEOVER_BTN_H, NULL ); // Try Again
+    a_FlexAddItem( gameover_flex, GAMEOVER_BTN_W, GAMEOVER_BTN_H, NULL ); // Quit
+    a_FlexLayout( gameover_flex );
+
+    current_scene = SCENE_GAME_OVER;
+    return;
+  }
 
   // Update timer (countdown)
   time_remaining -= dt;
@@ -236,6 +297,115 @@ static void scene_game_logic( float dt )
   // Update all enemies (AI, physics, blood particles)
   enemy_update( dt, player_get_x(), player_get_y(), player_get_vx(), player_get_vy() );
 
+  // Update weapons (auto-fire cooldowns) and drops (pickup check)
+  weapons_update( dt );
+  drops_update( dt );
+
+  // Spawn health drops on a timer
+  health_drop_timer += dt;
+  if ( health_drop_timer >= HEALTH_DROP_INTERVAL )
+  {
+    health_drop_timer = 0.0f;
+    float hx = RANDF( 40, SCREEN_WIDTH - 40 );
+    float hy = RANDF( 40, SCREEN_HEIGHT - 40 );
+    drops_spawn( hx, hy, DROP_HEALTH );
+  }
+
+  // Timed weapon drop at 20 seconds — random weapon the player doesn't have
+  game_elapsed_timer += dt;
+  if ( !timed_weapon_dropped && game_elapsed_timer >= WEAPON_DROP_TIME )
+  {
+    timed_weapon_dropped = 1;
+    health_drop_timer = 0.0f;  // Reset health timer so they don't overlap
+    WeaponType_t pool[5];
+    int pool_count = 0;
+    if ( !weapons_has( WEAPON_WAND ) )  pool[pool_count++] = WEAPON_WAND;
+    if ( !weapons_has( WEAPON_SPIN ) )  pool[pool_count++] = WEAPON_SPIN;
+    if ( !weapons_has( WEAPON_CHAIN ) ) pool[pool_count++] = WEAPON_CHAIN;
+    if ( !weapons_has( WEAPON_ORBIT ) ) pool[pool_count++] = WEAPON_ORBIT;
+    if ( !weapons_has( WEAPON_BOMB ) )  pool[pool_count++] = WEAPON_BOMB;
+    if ( pool_count > 0 )
+    {
+      WeaponType_t chosen = pool[rand() % pool_count];
+      // Pick a random spot away from the player (at least 150px)
+      float wx, wy;
+      float px = player_get_x();
+      float py = player_get_y();
+      do {
+        wx = RANDF( 40, SCREEN_WIDTH - 40 );
+        wy = RANDF( 40, SCREEN_HEIGHT - 40 );
+      } while ( sqrtf( (wx - px) * (wx - px) + (wy - py) * (wy - py) ) < 150.0f );
+      printf( "20s weapon drop: type=%d at (%.0f, %.0f) pool_count=%d\n", chosen, wx, wy, pool_count );
+      drops_spawn( wx, wy, chosen );
+    }
+    else
+    {
+      printf( "20s weapon drop: pool empty, player already has all weapons\n" );
+    }
+  }
+
+  // Timed weapon drop at 40 seconds — random weapon the player doesn't have (no health)
+  if ( !timed_weapon_dropped_2 && game_elapsed_timer >= WEAPON_DROP_TIME_2 )
+  {
+    timed_weapon_dropped_2 = 1;
+    health_drop_timer = 0.0f;
+    WeaponType_t pool2[5];
+    int pool2_count = 0;
+    if ( !weapons_has( WEAPON_WAND ) )  pool2[pool2_count++] = WEAPON_WAND;
+    if ( !weapons_has( WEAPON_SPIN ) )  pool2[pool2_count++] = WEAPON_SPIN;
+    if ( !weapons_has( WEAPON_CHAIN ) ) pool2[pool2_count++] = WEAPON_CHAIN;
+    if ( !weapons_has( WEAPON_ORBIT ) ) pool2[pool2_count++] = WEAPON_ORBIT;
+    if ( !weapons_has( WEAPON_BOMB ) )  pool2[pool2_count++] = WEAPON_BOMB;
+    if ( pool2_count > 0 )
+    {
+      WeaponType_t chosen2 = pool2[rand() % pool2_count];
+      float wx, wy;
+      float px = player_get_x();
+      float py = player_get_y();
+      do {
+        wx = RANDF( 40, SCREEN_WIDTH - 40 );
+        wy = RANDF( 40, SCREEN_HEIGHT - 40 );
+      } while ( sqrtf( (wx - px) * (wx - px) + (wy - py) * (wy - py) ) < 150.0f );
+      printf( "40s weapon drop: type=%d at (%.0f, %.0f) pool_count=%d\n", chosen2, wx, wy, pool2_count );
+      drops_spawn( wx, wy, chosen2 );
+    }
+    else
+    {
+      printf( "40s weapon drop: pool empty, player already has all weapons\n" );
+    }
+  }
+
+  // Timed weapon drop at 60 seconds — final drop
+  if ( !timed_weapon_dropped_3 && game_elapsed_timer >= WEAPON_DROP_TIME_3 )
+  {
+    timed_weapon_dropped_3 = 1;
+    health_drop_timer = 0.0f;
+    WeaponType_t pool3[5];
+    int pool3_count = 0;
+    if ( !weapons_has( WEAPON_WAND ) )  pool3[pool3_count++] = WEAPON_WAND;
+    if ( !weapons_has( WEAPON_SPIN ) )  pool3[pool3_count++] = WEAPON_SPIN;
+    if ( !weapons_has( WEAPON_CHAIN ) ) pool3[pool3_count++] = WEAPON_CHAIN;
+    if ( !weapons_has( WEAPON_ORBIT ) ) pool3[pool3_count++] = WEAPON_ORBIT;
+    if ( !weapons_has( WEAPON_BOMB ) )  pool3[pool3_count++] = WEAPON_BOMB;
+    if ( pool3_count > 0 )
+    {
+      WeaponType_t chosen3 = pool3[rand() % pool3_count];
+      float wx, wy;
+      float px = player_get_x();
+      float py = player_get_y();
+      do {
+        wx = RANDF( 40, SCREEN_WIDTH - 40 );
+        wy = RANDF( 40, SCREEN_HEIGHT - 40 );
+      } while ( sqrtf( (wx - px) * (wx - px) + (wy - py) * (wy - py) ) < 150.0f );
+      printf( "60s weapon drop: type=%d at (%.0f, %.0f) pool_count=%d\n", chosen3, wx, wy, pool3_count );
+      drops_spawn( wx, wy, chosen3 );
+    }
+    else
+    {
+      printf( "60s weapon drop: pool empty, player already has all weapons\n" );
+    }
+  }
+
   if ( app.mouse.wheel == 1 )
   {
     printf( "scroll up\n" );
@@ -247,8 +417,6 @@ static void scene_game_logic( float dt )
     printf( "scroll down\n" );
     app.mouse.wheel = 0;
   }
-
-  //a_DoWidget(); // Disabled - not using widgets
 
   // Ctrl+T to switch to test text scene
   static int ctrl_t_pressed = 0;
@@ -293,9 +461,17 @@ static void aRenderLoop( float dt )
     case SCENE_AUDIO_TEST:
       audio_test_draw();
       break;
+    case SCENE_GAME_OVER:
+      scene_game_over_draw( dt );
+      break;
   }
 
-  a_DrawWidgets();
+  // Draw hotbar and screen flash (game scene only)
+  if ( current_scene == SCENE_GAME )
+  {
+    hotbar_draw();
+    player_draw_screen_flash();
+  }
 }
 
 static void scene_game_draw( float dt )
@@ -348,11 +524,139 @@ static void scene_game_draw( float dt )
 
   a_DrawText( spawn_timer_text, SCREEN_WIDTH - 20, 40, enemy_count_style );
 
+  // Draw player health bar (top center)
+  {
+    int bar_w = 200;
+    int bar_h = 12;
+    int bar_x = (SCREEN_WIDTH - bar_w) / 2;
+    int bar_y = 8;
+
+    float hp_pct = (float)player_get_hp() / (float)player_get_max_hp();
+    int fill_w = (int)(bar_w * hp_pct);
+
+    // Background
+    a_DrawFilledRect(
+      (aRectf_t){(float)bar_x, (float)bar_y, (float)bar_w, (float)bar_h},
+      (aColor_t){40, 40, 40, 200}
+    );
+
+    // Red health fill
+    if ( fill_w > 0 )
+    {
+      a_DrawFilledRect(
+        (aRectf_t){(float)bar_x, (float)bar_y, (float)fill_w, (float)bar_h},
+        (aColor_t){200, 30, 30, 255}
+      );
+    }
+
+    // Heal pulse — green glow overlay on the health fill
+    float heal_pct = player_get_heal_flash_progress();
+    if ( heal_pct > 0.0f && fill_w > 0 )
+    {
+      int heal_alpha = (int)(180.0f * heal_pct);
+      // Expand the bar slightly for a "pulse" effect
+      int pulse_pad = (int)(3.0f * heal_pct);
+      a_DrawFilledRect(
+        (aRectf_t){(float)(bar_x - pulse_pad), (float)(bar_y - pulse_pad),
+                   (float)(fill_w + pulse_pad * 2), (float)(bar_h + pulse_pad * 2)},
+        (aColor_t){40, 255, 40, (uint8_t)heal_alpha}
+      );
+    }
+
+    // Border — green during heal, white otherwise
+    aColor_t border_color = (heal_pct > 0.0f)
+      ? (aColor_t){40, 255, 40, (uint8_t)(150 + (int)(105.0f * heal_pct))}
+      : (aColor_t){255, 255, 255, 150};
+    a_DrawRect(
+      (aRectf_t){(float)bar_x, (float)bar_y, (float)bar_w, (float)bar_h},
+      border_color
+    );
+
+    // HP text
+    char hp_text[16];
+    snprintf( hp_text, sizeof(hp_text), "%d/%d", player_get_hp(), player_get_max_hp() );
+    aColor_t hp_text_color = (heal_pct > 0.0f)
+      ? (aColor_t){40, 255, 40, 255}
+      : (aColor_t){255, 255, 255, 255};
+    aTextStyle_t hp_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = hp_text_color,
+      .align = TEXT_ALIGN_CENTER,
+      .scale = 0.4f
+    };
+    a_DrawText( hp_text, bar_x + bar_w / 2, bar_y - 1, hp_style );
+  }
+
   // Draw enemies (includes blood particles)
   enemy_draw();
 
+  // Draw drops on ground and weapon effects
+  drops_draw();
+  weapons_draw();
+
   // Draw player and bullets
   player_draw( bullet_img );
+
+  // Draw dash indicator (bottom left)
+  {
+    int dash_size = 44;
+    int dash_x = 16;
+    int dash_y = SCREEN_HEIGHT - dash_size - 16;
+    float dash_progress = player_get_dash_cooldown_progress();
+    int dash_ready = (dash_progress >= 1.0f);
+
+    aRectf_t dash_rect = {(float)dash_x, (float)dash_y, (float)dash_size, (float)dash_size};
+
+    // Background
+    aColor_t dash_bg = dash_ready ? (aColor_t){40, 80, 120, 220} : (aColor_t){40, 40, 40, 180};
+    a_DrawFilledRect(dash_rect, dash_bg);
+    aColor_t dash_border = dash_ready ? (aColor_t){100, 200, 255, 200} : (aColor_t){255, 255, 255, 60};
+    a_DrawRect(dash_rect, dash_border);
+
+    // "DASH" label
+    aTextStyle_t dash_label_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = dash_ready ? (aColor_t){100, 200, 255, 255} : (aColor_t){150, 150, 150, 255},
+      .align = TEXT_ALIGN_CENTER,
+      .scale = 0.45f
+    };
+    a_DrawText("DASH", dash_x + dash_size / 2, dash_y + 6, dash_label_style);
+
+    // "SHIFT" key hint below
+    aTextStyle_t key_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = dash_ready ? (aColor_t){255, 255, 255, 255} : (aColor_t){100, 100, 100, 255},
+      .align = TEXT_ALIGN_CENTER,
+      .scale = 0.35f
+    };
+    a_DrawText("SHIFT", dash_x + dash_size / 2, dash_y + 22, key_style);
+
+    // Cooldown pie overlay (reuse same logic as hotbar)
+    if (!dash_ready) {
+      float remaining = 1.0f - dash_progress;
+      float threshold = remaining * 2.0f * (float)PI;
+      int cx = dash_x + dash_size / 2;
+      int cy = dash_y + dash_size / 2;
+      int r = dash_size / 2 - 2;
+      int r2 = r * r;
+
+      SDL_SetRenderDrawBlendMode(app.renderer, SDL_BLENDMODE_BLEND);
+      SDL_SetRenderDrawColor(app.renderer, 0, 0, 0, 140);
+
+      for (int pdy = -r; pdy <= r; pdy++) {
+        for (int pdx = -r; pdx <= r; pdx++) {
+          if (pdx * pdx + pdy * pdy > r2) continue;
+          float angle = atan2f((float)pdx, (float)(-pdy));
+          if (angle < 0.0f) angle += 2.0f * (float)PI;
+          if (angle < threshold) {
+            SDL_RenderDrawPoint(app.renderer, cx + pdx, cy + pdy);
+          }
+        }
+      }
+
+      SDL_SetRenderDrawBlendMode(app.renderer, SDL_BLENDMODE_NONE);
+    }
+  }
 
   // Draw keyboard shortcuts (bottom right, 30% opacity white)
   aTextStyle_t shortcuts_style = {
@@ -371,13 +675,165 @@ static void scene_game_draw( float dt )
   a_DrawText("ESC - Quit", SCREEN_WIDTH - 20, y_offset, shortcuts_style);
 }
 
+// ============================================================================
+// Game Over Scene
+// ============================================================================
+
+static int point_in_rect( int px, int py, int rx, int ry, int rw, int rh )
+{
+  return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
+}
+
+static void scene_game_over_logic( float dt )
+{
+  (void)dt;
+
+  if ( !gameover_flex ) return;
+
+  // Check mouse click on buttons
+  if ( app.mouse.pressed && app.mouse.button == SDL_BUTTON_LEFT )
+  {
+    int mx = app.mouse.x;
+    int my = app.mouse.y;
+
+    // Try Again button
+    const FlexItem_t* retry = a_FlexGetItem( gameover_flex, GAMEOVER_BTN_IDX_RETRY );
+    if ( retry && point_in_rect( mx, my, retry->calc_x, retry->calc_y, retry->w, retry->h ) )
+    {
+      app.mouse.pressed = 0;
+      game_reset();
+      return;
+    }
+
+    // Quit button
+    const FlexItem_t* quit = a_FlexGetItem( gameover_flex, GAMEOVER_BTN_IDX_QUIT );
+    if ( quit && point_in_rect( mx, my, quit->calc_x, quit->calc_y, quit->w, quit->h ) )
+    {
+      app.mouse.pressed = 0;
+      app.running = 0;
+      return;
+    }
+
+    app.mouse.pressed = 0;
+  }
+}
+
+static void scene_game_over_draw( float dt )
+{
+  (void)dt;
+
+  if ( !gameover_flex ) return;
+
+  // Dark overlay over the whole screen
+  a_DrawFilledRect(
+    (aRectf_t){0, 0, (float)SCREEN_WIDTH, (float)SCREEN_HEIGHT},
+    (aColor_t){0, 0, 0, 180}
+  );
+
+  // Panel background
+  a_DrawFilledRect(
+    (aRectf_t){(float)gameover_flex->x, (float)gameover_flex->y,
+               (float)gameover_flex->w, (float)gameover_flex->h},
+    (aColor_t){30, 30, 50, 240}
+  );
+  a_DrawRect(
+    (aRectf_t){(float)gameover_flex->x, (float)gameover_flex->y,
+               (float)gameover_flex->w, (float)gameover_flex->h},
+    (aColor_t){200, 30, 30, 255}
+  );
+
+  // "GAME OVER" title above the panel
+  aTextStyle_t title_style = {
+    .type = FONT_ENTER_COMMAND,
+    .fg = {220, 30, 30, 255},
+    .align = TEXT_ALIGN_CENTER,
+    .scale = 1.2f
+  };
+  a_DrawText( "GAME OVER", SCREEN_WIDTH / 2,
+              gameover_flex->y - 40, title_style );
+
+  // Draw buttons
+  int mx = app.mouse.x;
+  int my = app.mouse.y;
+
+  const char* labels[2] = { "TRY AGAIN", "QUIT" };
+  for ( int i = 0; i < 2; i++ )
+  {
+    const FlexItem_t* item = a_FlexGetItem( gameover_flex, i );
+    if ( !item ) continue;
+
+    int hovered = point_in_rect( mx, my, item->calc_x, item->calc_y, item->w, item->h );
+
+    aColor_t btn_bg = hovered ? (aColor_t){80, 80, 120, 255} : (aColor_t){50, 50, 70, 255};
+    aColor_t btn_border = hovered ? (aColor_t){255, 255, 255, 255} : (aColor_t){150, 150, 150, 200};
+
+    a_DrawFilledRect(
+      (aRectf_t){(float)item->calc_x, (float)item->calc_y,
+                 (float)item->w, (float)item->h},
+      btn_bg
+    );
+    a_DrawRect(
+      (aRectf_t){(float)item->calc_x, (float)item->calc_y,
+                 (float)item->w, (float)item->h},
+      btn_border
+    );
+
+    aTextStyle_t btn_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = hovered ? (aColor_t){255, 255, 255, 255} : (aColor_t){200, 200, 200, 255},
+      .align = TEXT_ALIGN_CENTER,
+      .scale = 0.6f
+    };
+    a_DrawText( labels[i],
+                item->calc_x + item->w / 2,
+                item->calc_y + 10,
+                btn_style );
+  }
+}
+
+// ============================================================================
+// Game Reset
+// ============================================================================
+
+static void game_reset( void )
+{
+  // Clean up game over UI
+  if ( gameover_flex )
+  {
+    a_FlexBoxDestroy( &gameover_flex );
+  }
+
+  // Clean up game systems
+  enemy_cleanup();
+  hotbar_cleanup();
+
+  // Reset main.c timers
+  time_remaining = 15.0f * 60.0f;
+  spawn_timer = 0.0f;
+  health_drop_timer = 0.0f;
+  game_elapsed_timer = 0.0f;
+  timed_weapon_dropped = 0;
+  timed_weapon_dropped_2 = 0;
+  timed_weapon_dropped_3 = 0;
+
+  // Re-initialize all game systems
+  player_init();
+  enemy_init( MAX_ENEMIES, MAX_BLOOD_PARTICLES );
+  weapons_init();
+  drops_init();
+  hotbar_init();
+
+  current_scene = SCENE_GAME;
+}
+
 void aMainloop( void )
 {
   a_PrepareScene();
 
-  app.delegate.logic( a_GetDeltaTime() );
-  app.delegate.draw( a_GetDeltaTime() );
-  
+  float dt = a_GetDeltaTime();
+  app.delegate.logic( dt );
+  app.delegate.draw( dt );
+
   a_PresentScene();
 }
 
