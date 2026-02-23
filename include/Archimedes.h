@@ -22,8 +22,8 @@
 ---------------------------------------------------------------
 */
 
-#define FPS_CAP 60
-#define LOGIC_RATE ( 1000 / FPS_CAP )
+#define FPS_CAP 60.0f
+#define LOGIC_RATE ( 1000.0f / FPS_CAP )
 
 #define MAX_KEYBOARD_KEYS 350
 #define LOG_LEVEL_COUNT   6
@@ -1057,6 +1057,10 @@ void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,
 void a_UpdateTitle( const char *title );
 
 void a_SetPixel( SDL_Surface *surface, int x, int y, aColor_t c );
+
+void a_SetClipRect( aRectf_t clip );
+
+void a_DisableClipRect( void );
 
 /*
 ---------------------------------------------------------------

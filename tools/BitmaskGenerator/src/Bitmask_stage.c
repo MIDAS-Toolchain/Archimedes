@@ -29,9 +29,9 @@ static void sLogic( float dt )
     return;
   }
   
-  if ( app.keyboard[A_R] == 1 )
+  if ( app.keyboard[A_F1] == 1 )
   {
-    app.keyboard[A_R] = 0;
+    app.keyboard[A_F1] = 0;
     a_WidgetsInit( "resources/load_img_menu.auf" );
   }
 }

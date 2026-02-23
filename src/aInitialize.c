@@ -101,6 +101,9 @@ int a_Init( const int width, const int height, const char *title )
   app.img_cache = NULL;
   app.options.frame_cap = 1;
   app.options.scale_factor = 2;
+ 
+  // Dark gray
+  app.background = (aColor_t){20, 20, 20, 255};
 
   // Set app to running state
   app.running = 1;

@@ -190,7 +190,6 @@ void a_DrawRect( const aRectf_t rect, const aColor_t color )
   SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_NONE );
 }
 
-
 void a_DrawFilledRect( const aRectf_t rect, const aColor_t color )
 {
   SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_BLEND );
@@ -367,6 +366,20 @@ void a_SetPixel( SDL_Surface *surface, int x, int y, aColor_t c )
   if (SDL_MUSTLOCK(surface)) {
     SDL_UnlockSurface(surface);
   }
+}
+
+void a_SetClipRect( aRectf_t clip )
+{
+  SDL_Rect rect = { .x = (int)clip.x,
+                    .y = (int)clip.y,
+                    .w = (int)clip.w, 
+                    .h = (int)clip.h };
+  SDL_RenderSetClipRect( app.renderer, &rect );
+}
+
+void a_DisableClipRect( void )
+{
+  SDL_RenderSetClipRect( app.renderer, NULL );
 }
 
 /**

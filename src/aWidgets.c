@@ -27,7 +27,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root );
 static void DrawButtonWidget( aWidget_t* w );
 static void DrawSelectWidget( aWidget_t* w );
 static void DrawSliderWidget( aWidget_t* w );
-static void DrawInputWidget( aWidget_t* w );
+static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect );
 static void DrawControlWidget( aWidget_t* w );
 static void DrawContainerWidget( aWidget_t* w );
 
@@ -244,7 +244,7 @@ void a_DrawWidgets( void )
         break;
       
       case WT_INPUT:
-        DrawInputWidget( w );
+        DrawInputWidget( w, w->rect ); //This might break
         break;
       
       case WT_CONTROL:
@@ -1073,7 +1073,11 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
 
       else if ( w->flex == 3 )
       {
-        
+        if ( node_x != NULL && node_y != NULL )
+        {
+          current->rect.x = node_x->value_int + temp_x;
+          current->rect.y = node_y->value_int + temp_y;
+        }
       }
 
       else
@@ -1283,6 +1287,7 @@ static void DrawButtonWidget( aWidget_t* w )
           .w = ( w->rect.w + ( 2 * w->padding ) ),
           .h = ( w->rect.h + ( 2 * w->padding ) ) };
         a_DrawFilledRect( rect, w->bg );
+        a_DrawRect( rect, black );
       }
     }
 
@@ -1315,6 +1320,7 @@ static void DrawSelectWidget( aWidget_t* w )
                                   .h = ( w->rect.h + ( 2 * w->padding ) ) };
       
       a_DrawFilledRect( rect, w->bg );
+      a_DrawRect( rect, black );
     }
 
     aTextStyle_t style = { .type = app.font_type, .fg = c, .bg = {0,0,0,0}, .align = TEXT_ALIGN_LEFT, .wrap_width = 0, .scale = 1.0f, .padding = 0 };
@@ -1345,6 +1351,7 @@ static void DrawSliderWidget( aWidget_t* w )
                                   .h = ( w->rect.h + ( 2 * w->padding ) ) };
       
       a_DrawFilledRect( rect, w->bg );
+      a_DrawRect( rect, black );
     }
 
     width = ( 1.0 * slider->value ) / 100;
@@ -1367,13 +1374,15 @@ static void DrawSliderWidget( aWidget_t* w )
 
 }
 
-static void DrawInputWidget( aWidget_t* w )
+static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect )
 {
   aColor_t c;
   aInputWidget_t* input;
-  float width, height;
+  float text_width, text_height;
 
   input = ( aInputWidget_t* )w->data;
+  
+  a_CalcTextDimensions( input->text, app.font_type, &text_width, &text_height );
 
   WidgetColor( w, &c );
   
@@ -1381,33 +1390,43 @@ static void DrawInputWidget( aWidget_t* w )
   {
     if ( w->boxed == 1 )
     {
+      float rect_w = ( ( w->rect.w + text_width ) + ( 2 * w->padding ) ) + 9;
+      if ( rect_w > cont_rect.w ) rect_w = cont_rect.w;
+      if ( rect_w > cont_rect.h )
+      {
+
+      }
+
       aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - w->padding ),
                                   .y = ( w->rect.y - w->padding ),
-                                  .w = ( w->rect.w + ( 2 * w->padding ) ),
-                                  .h = ( w->rect.h + ( 2 * w->padding ) ) };
+                                  .w = ( rect_w ),
+                                  .h = ( ( w->rect.h ) + ( 2 * w->padding ) ) };
       
       a_DrawFilledRect( rect, w->bg );
+      a_DrawRect( rect, black );
     }
 
-    aTextStyle_t style = { .type = app.font_type,
-                           .fg = c,
-                           .bg = {0,0,0,0},
-                           .align = TEXT_ALIGN_LEFT,
+    aTextStyle_t style = { .type       = app.font_type,
+                           .fg         = c,
+                           .bg         = {0,0,0,255},
+                           .align      = TEXT_ALIGN_LEFT,
                            .wrap_width = 0,
-                           .scale = 1.0f,
-                           .padding = 0 };
+                           .scale      = 1.0f,
+                           .padding    = 0 };
+
     a_DrawText( w->label, w->rect.x, w->rect.y, style );
 
     a_DrawText( input->text, input->rect.x, input->rect.y, style );
+    
+    uint32_t ticks = SDL_GetTicks();
+    uint8_t is_visible = ( ticks % 1000 ) < 500;
 
-    if ( handle_input_widget && app.active_widget == w &&
-         ( (int)cursor_blink % (int)FPS_CAP < ( FPS_CAP / 2 ) ) )
+    if ( handle_input_widget && is_visible )
     {
-      a_CalcTextDimensions( input->text, app.font_type, &width, &height );
-      aRectf_t cursor_rect = ( aRectf_t ){ .x = ( input->rect.x + width + 4 ),
-                                         .y = ( input->rect.y + 14 ),
-                                         .w = 32,
-                                         .h = 32 };
+      aRectf_t cursor_rect = ( aRectf_t ){ .x = ( input->rect.x + text_width ),
+                                           .y = ( input->rect.y ),
+                                           .w = 9,
+                                           .h = 16 };
       a_DrawFilledRect( cursor_rect, green );
     }
   }
@@ -1433,6 +1452,7 @@ static void DrawControlWidget( aWidget_t* w )
                                   .h = ( w->rect.h + ( 2 * w->padding ) ) };
       
       a_DrawFilledRect( rect, w->bg );
+      a_DrawRect( rect, black );
     }
 
     aTextStyle_t style = { .type = app.font_type, .fg = c, .bg = {0,0,0,0}, .align = TEXT_ALIGN_LEFT, .wrap_width = 0, .scale = 1.0f, .padding = 0 };
@@ -1486,6 +1506,7 @@ static void DrawContainerWidget( aWidget_t* w )
       if ( w->boxed == 1 )
       {
         a_DrawFilledRect( rect, w->bg );
+        a_DrawRect( rect, black );
       }
     }
 
@@ -1508,7 +1529,7 @@ static void DrawContainerWidget( aWidget_t* w )
             break;
 
           case WT_INPUT:
-            DrawInputWidget( &current );
+            DrawInputWidget( &current, w->rect );
             break;
 
           case WT_SELECT:
