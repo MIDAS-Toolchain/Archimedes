@@ -67,8 +67,8 @@ void a_InitFonts( void )
 {
 #ifdef __EMSCRIPTEN__
   // Smaller fonts for web environment to prevent overlap and fit better
-  initFont( "resources/fonts/EnterCommand.ttf", FONT_ENTER_COMMAND, 24 );
-  initFont( "resources/fonts/JetBrains.ttf", FONT_LINUX, 18 );
+  initFont( "resources/fonts/EnterCommand.ttf", FONT_ENTER_COMMAND, 48 );
+  initFont( "resources/fonts/JetBrains.ttf", FONT_LINUX, 32 );
   initFontPNG( "resources/fonts/CodePage437.png", FONT_CODE_PAGE_437, 9, 16 );
   initFontPNG( "resources/fonts/CodePage437.png", FONT_GAME, 9, 16 );
 #else

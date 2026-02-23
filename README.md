@@ -35,39 +35,50 @@ make EMARCH
 
 Archimedes is a minimalist game development library written in C that abstracts common SDL2 operations into a clean, easy-to-use API. The framework is designed for developers who want to create 2D games and applications without dealing with the complexity of raw SDL2 programming. It supports both native compilation and web deployment through Emscripten, making it perfect for cross-platform game development.
 
-The library follows a modular architecture with separate components for graphics rendering, audio playback, input management, text rendering, image handling, and UI widgets. All functionality is exposed through a single header file (`Archimedes.h`) and can be easily integrated into existing projects or used as the foundation for new games.
+The library follows a modular architecture with separate components for graphics rendering, audio playback, input management, text rendering, image handling, UI widgets, layout, animations, and more. All functionality is exposed through a single header file (`Archimedes.h`) and can be easily integrated into existing projects or used as the foundation for new games.
 
 ## Features
 
-### 🎨 Graphics & Rendering
+### Graphics & Rendering
 - **Primitive Drawing**: Points, lines, circles, triangles, and rectangles with filled variants
 - **Image Support**: PNG image loading with caching system for optimized memory usage
 - **Texture Management**: Automatic texture loading and management with SDL2 backend
 - **Scene Management**: Simplified scene preparation and presentation workflow
+- **Viewport/Camera**: Pan and zoom support for 2D camera control
 
-### 🎵 Audio System
-- **Sound Effects**: Load and play audio clips with SDL2_mixer integration
-- **Audio Initialization**: Automatic audio device setup and configuration
-- **Format Support**: Multiple audio format support through SDL2_mixer
-- **Playback Control**: Simple API for triggering sound effects in games
+### Audio System
+- **Sound Effects**: Load and play sound effects with channel-based mixing via SDL2_mixer
+- **Background Music**: Stream music with looping, fade-in/out, pause/resume
+- **Channel Management**: Reserved and auto-allocated channels for organized audio
+- **Volume Control**: Per-channel and master volume, independent music volume
 
-### 🎮 Input Handling
+### Input Handling
 - **Keyboard Input**: Full keyboard state tracking with 350+ key support
 - **Mouse Support**: Complete mouse input including position, buttons, and scroll wheel
 - **Event Processing**: Centralized input processing with easy state queries
 - **Cross-platform**: Consistent input handling across different operating systems
 
-### 🖼️ Text & UI
-- **Font Rendering**: TTF font support with multiple font loading capabilities
-- **Text Alignment**: Left, center, and right text alignment options
-- **UI Widgets**: Button, slider, input field, select dropdown, and control widgets
-- **Widget System**: JSON-based widget configuration with event handling
+### Text & UI
+- **Font Rendering**: TTF font support with glyph atlas rendering
+- **Styled Text**: `aTextStyle_t` configuration for color, alignment, scale, wrapping, and padding
+- **UI Widgets**: Button, slider, input field, select dropdown, container, and control widgets
+- **Widget System**: AUF-based widget configuration with event handling
+- **FlexBox Layout**: CSS-inspired automatic layout engine with direction, justify, align, gap, and padding
 
-### ⚙️ Core Systems
+### Animations & Sprites
+- **Sprite Sheets**: Load and extract individual sprites from sprite sheet images
+- **Animations**: Timer-driven frame animation system
+
+### World & Tiles
+- **2D World**: Tile-based 2D world creation
+- **Tile Bitmask**: Bitmask-based auto-tiling for seamless tile transitions
+
+### Core Systems
 - **Delta Time**: Frame-rate independent timing system for smooth animations
+- **Timers**: Create, start, stop, pause, and oneshot timer support
 - **Cross-platform**: Native compilation for desktop and web deployment via Emscripten
 - **Memory Management**: Efficient caching systems for images and textures
-- **Error Handling**: Comprehensive logging system with multiple severity levels
+- **Error Handling**: Logging system with multiple severity levels (NORMAL, WARNING, FATAL, INFO, DEBUG, TRACE)
 
 ## Quick Start
 
@@ -91,8 +102,14 @@ void logic(float dt) {
 
 void render(float dt) {
     a_DrawFilledCircle(playerX, playerY, 20, blue);
-    a_DrawText("Use WASD to move", 10, 10, 255, 255, 255,
-               FONT_GAME, TEXT_ALIGN_LEFT, 0);
+
+    aTextStyle_t style = {
+        .type = FONT_GAME,
+        .fg = {255, 255, 255, 255},
+        .align = TEXT_ALIGN_LEFT,
+        .scale = 1.0f
+    };
+    a_DrawText("Use WASD to move", 10, 10, style);
 }
 
 int main(void) {
@@ -121,7 +138,7 @@ make shared
 sudo make install
 
 # Compile your game
-gcc main.c -o game -lArchimedes -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lcjson -lm
+gcc main.c -o game -lArchimedes -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lm
 
 # Run
 ./game
@@ -140,4 +157,4 @@ Comprehensive usage guides available in the [Wiki](https://github.com/McCoy1701/
 
 ### Utility Modules
 - [Image](https://github.com/McCoy1701/Archimedes/wiki/Usage-Image) - PNG loading and caching
-- [Audio](https://github.com/McCoy1701/Archimedes/wiki/Usage-Audio) - Sound effect playback
+- [Audio](https://github.com/McCoy1701/Archimedes/wiki/Usage-Audio) - Sound effect and music playback
