@@ -15,8 +15,7 @@ __pycache__/
 *.pyd
 .Python
 
-.sisyphus/
-sisyphus.legend
+index/
 
-CLAUDE.md
-GEMINI.md
+# Wiki
+Archimedes.wiki/

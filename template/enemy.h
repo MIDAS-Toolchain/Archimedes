@@ -37,6 +37,7 @@ typedef struct {
   EnemyState_t state;
   int active;                   // Is this enemy slot used?
   int hit_count;                // Number of times hit (for color)
+  int aggro;                    // Has entered attack mode at least once
   float death_timer;            // Time since death (for fade)
 } Enemy_t;
 
@@ -128,5 +129,39 @@ int enemy_is_active(int enemy_index);
  * @return Total enemy count
  */
 int enemy_get_count(void);
+
+/**
+ * @brief Get maximum enemy array size (for iteration)
+ * @return Max enemy slots
+ */
+int enemy_get_max_count(void);
+
+/**
+ * @brief Find the enemy that maximizes chain hits (cluster center)
+ * @param radius Chain jump radius
+ * @param player_x Player X for tiebreaking
+ * @param player_y Player Y for tiebreaking
+ * @return Index of best cluster target, or -1 if no alive enemies
+ */
+int enemy_find_cluster_target(float radius, float player_x, float player_y);
+
+/**
+ * @brief Check if enemy is alive (active and not a corpse or in knockback)
+ * @param enemy_index Index of enemy
+ * @return 1 if alive and targetable, 0 otherwise
+ */
+int enemy_is_alive(int enemy_index);
+
+/**
+ * @brief Find the densest cluster and return its center position
+ * @param radius Cluster search radius
+ * @param player_x Player X for tiebreaking
+ * @param player_y Player Y for tiebreaking
+ * @param out_x Output X position (enemy center)
+ * @param out_y Output Y position (enemy center)
+ * @return 1 if a target was found, 0 if no alive enemies
+ */
+int enemy_find_cluster_position(float radius, float player_x, float player_y,
+                                float lead_time, float* out_x, float* out_y);
 
 #endif /* ENEMY_H */

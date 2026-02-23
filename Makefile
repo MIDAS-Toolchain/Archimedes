@@ -76,7 +76,10 @@ BITMASK_GEN_SRCS = Bitmask_stage.c
 NATIVE_SRCS = player_actions.c\
 							test_text.c\
 							audio_test.c\
-							enemy.c
+							enemy.c\
+							hotbar.c\
+							weapons.c\
+							drops.c
 
 SHARED_OBJS = $(patsubst %.c, $(OBJ_DIR_SHARED)/%.o, $(ARCHIMEDES_SRCS))
 TEMPLATE_OBJS = $(patsubst %.c, $(OBJ_DIR_NATIVE)/%.o, $(NATIVE_SRCS))
