@@ -27,7 +27,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root );
 static void DrawButtonWidget( aWidget_t* w );
 static void DrawSelectWidget( aWidget_t* w );
 static void DrawSliderWidget( aWidget_t* w );
-static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect );
+static void DrawInputWidget( aWidget_t* w );
 static void DrawControlWidget( aWidget_t* w );
 static void DrawContainerWidget( aWidget_t* w );
 
@@ -244,7 +244,7 @@ void a_DrawWidgets( void )
         break;
       
       case WT_INPUT:
-        DrawInputWidget( w, w->rect ); //This might break
+        DrawInputWidget( w );
         break;
       
       case WT_CONTROL:
@@ -833,6 +833,7 @@ static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root )
   w->data = input;
 
   input->max_length = a_AUFGetObjectItem( root, "max_length" )->value_int;
+  input->visible_length = a_AUFGetObjectItem( root, "visible_length" )->value_int;
   input->text_offset = a_AUFGetObjectItem( root, "text_offset" )->value_int;
   input->text = malloc(  input->max_length + 1 );
 
@@ -1374,15 +1375,17 @@ static void DrawSliderWidget( aWidget_t* w )
 
 }
 
-static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect )
+static void DrawInputWidget( aWidget_t* w )
 {
   aColor_t c;
   aInputWidget_t* input;
   float text_width, text_height;
+  aRectf_t glpyh_rect;
 
   input = ( aInputWidget_t* )w->data;
   
   a_CalcTextDimensions( input->text, app.font_type, &text_width, &text_height );
+  glpyh_rect = a_GetGlyphSize();
 
   WidgetColor( w, &c );
   
@@ -1390,20 +1393,30 @@ static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect )
   {
     if ( w->boxed == 1 )
     {
-      float rect_w = ( ( w->rect.w + text_width ) + ( 2 * w->padding ) ) + 9;
-      if ( rect_w > cont_rect.w ) rect_w = cont_rect.w;
-      if ( rect_w > cont_rect.h )
-      {
-
-      }
-
-      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - w->padding ),
-                                  .y = ( w->rect.y - w->padding ),
-                                  .w = ( rect_w ),
-                                  .h = ( ( w->rect.h ) + ( 2 * w->padding ) ) };
+      aRectf_t rect = (aRectf_t){
+        .x = ( w->rect.x - w->padding ),
+        .y = ( w->rect.y - w->padding ),
+        .w = ( w->rect.w + glpyh_rect.w * input->visible_length ) + ( 2 * w->padding ),
+        .h = ( ( w->rect.h ) + ( 2 * w->padding ) )
+      };
       
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );
+    }
+    
+    aRectf_t text_rect = (aRectf_t){
+      .x = ( input->rect.x ),
+      .y = ( input->rect.y ),
+      .w = ( glpyh_rect.w * input->visible_length ),
+      .h = ( glpyh_rect.h )
+    };
+    a_DrawRect( text_rect, black );
+
+    int scroll_offset = 0;
+
+    if ( text_width > text_rect.w )
+    {
+      scroll_offset = text_width - text_rect.w;
     }
 
     aTextStyle_t style = { .type       = app.font_type,
@@ -1415,8 +1428,9 @@ static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect )
                            .padding    = 0 };
 
     a_DrawText( w->label, w->rect.x, w->rect.y, style );
-
-    a_DrawText( input->text, input->rect.x, input->rect.y, style );
+    
+    a_SetClipRect( text_rect );
+    a_DrawText( input->text, input->rect.x - scroll_offset, input->rect.y, style );
     
     uint32_t ticks = SDL_GetTicks();
     uint8_t is_visible = ( ticks % 1000 ) < 500;
@@ -1430,6 +1444,8 @@ static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect )
       a_DrawFilledRect( cursor_rect, green );
     }
   }
+
+  a_DisableClipRect();
 }
 
 static void DrawControlWidget( aWidget_t* w )
@@ -1529,7 +1545,7 @@ static void DrawContainerWidget( aWidget_t* w )
             break;
 
           case WT_INPUT:
-            DrawInputWidget( &current, w->rect );
+            DrawInputWidget( &current );
             break;
 
           case WT_SELECT:
