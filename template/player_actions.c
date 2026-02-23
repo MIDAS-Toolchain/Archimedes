@@ -141,24 +141,22 @@ static int find_nearest_enemy(float* out_x, float* out_y)
 
   for (int i = 0; i < MAX_ENEMY_SCAN; i++)
   {
-    if (!enemy_is_active(i)) continue;
-
-    EnemyState_t state = enemy_get_state(i);
-    if (state == ENEMY_STATE_CORPSE) continue;
+    if (!enemy_is_alive(i)) continue;
 
     float ex, ey;
     enemy_get_position(i, &ex, &ey);
 
-    float dx = (ex + 8) - center_x;  // enemy center (16x16, so +8)
-    float dy = (ey + 8) - center_y;
+    float er = enemy_get_radius(i);
+    float dx = (ex + er) - center_x;
+    float dy = (ey + er) - center_y;
     float dist = sqrtf(dx * dx + dy * dy);
 
     if (dist < nearest_dist)
     {
       nearest_dist = dist;
       nearest_index = i;
-      *out_x = ex + 8;
-      *out_y = ey + 8;
+      *out_x = ex + er;
+      *out_y = ey + er;
     }
   }
 
@@ -464,8 +462,9 @@ void player_do_spin_attack(float radius)
     float ex, ey;
     enemy_get_position(i, &ex, &ey);
 
-    float dx = (ex + 8) - cx;
-    float dy = (ey + 8) - cy;
+    float er = enemy_get_radius(i);
+    float dx = (ex + er) - cx;
+    float dy = (ey + er) - cy;
     float dist = sqrtf(dx * dx + dy * dy);
 
     if (dist < radius) {

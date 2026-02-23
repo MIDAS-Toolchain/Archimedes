@@ -36,6 +36,14 @@ void drops_init(void)
   }
 }
 
+int drops_has_type(WeaponType_t type)
+{
+  for (int i = 0; i < MAX_DROPS; i++) {
+    if (drops[i].active && drops[i].type == type) return 1;
+  }
+  return 0;
+}
+
 void drops_spawn(float x, float y, WeaponType_t type)
 {
   for (int i = 0; i < MAX_DROPS; i++) {

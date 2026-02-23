@@ -152,33 +152,47 @@ void a_DrawTriangle( const int x0, const int y0, const int x1, const int y1,
   SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_NONE );
 }
 
-/*void a_DrawFilledTriangle( const int x0, const int y0, const int x1, const int y1,
+void a_DrawFilledTriangle( const int x0, const int y0, const int x1, const int y1,
                            const int x2, const int y2, const aColor_t color )
 {
-  int maxX = MAX(x0, MAX(x1, x2));
-  int minX = MIN(x0, MIN(x1, x2));
-  int maxY = MAX(y0, MAX(y1, y2));
-  int minY = MIN(y0, MIN(y1, y2));
+  SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_BLEND );
+  SDL_SetRenderDrawColor( app.renderer, color.r, color.g, color.b, color.a );
 
-  dVec2_t v1 = {x1 - x0, y1 - y0};
-  dVec2_t v2 = {x2 - x0, y2 - y0};
+  // Sort vertices by y: top <= mid <= bot
+  int tx0 = x0, ty0 = y0, tx1 = x1, ty1 = y1, tx2 = x2, ty2 = y2;
+  int tmp;
+  if (ty0 > ty1) { tmp=tx0; tx0=tx1; tx1=tmp; tmp=ty0; ty0=ty1; ty1=tmp; }
+  if (ty0 > ty2) { tmp=tx0; tx0=tx2; tx2=tmp; tmp=ty0; ty0=ty2; ty2=tmp; }
+  if (ty1 > ty2) { tmp=tx1; tx1=tx2; tx2=tmp; tmp=ty1; ty1=ty2; ty2=tmp; }
 
-  for (int x = minX; x <= maxX; x++)
-  {
-    for (int y = minY; y <= maxY; y++)
-    {
-      dVec2_t q = {x - x0, y - y0};
-
-      float s = d_CrossProductVec2f(q, v2) / d_CrossProductVec2f(v1, v2);
-      float t = d_CrossProductVec2f(v1, q) / d_CrossProductVec2f(v1, v2);
-
-      if ( (s >= 0) && (t >= 0) && (s + t <= 1)) {
-        SDL_SetRenderDrawColor(app.renderer, color.r, color.g, color.b, color.a);
-        SDL_RenderDrawPoint(app.renderer, x, y);
-      }
-    }
+  int total_h = ty2 - ty0;
+  if (total_h == 0) {
+    int lx = tx0 < tx1 ? (tx0 < tx2 ? tx0 : tx2) : (tx1 < tx2 ? tx1 : tx2);
+    int rx = tx0 > tx1 ? (tx0 > tx2 ? tx0 : tx2) : (tx1 > tx2 ? tx1 : tx2);
+    SDL_RenderDrawLine( app.renderer, lx, ty0, rx, ty0 );
+    SDL_SetRenderDrawColor( app.renderer, 255, 255, 255, 255 );
+    SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_NONE );
+    return;
   }
-}*/
+
+  for (int y = ty0; y <= ty2; y++) {
+    float xa = tx0 + (float)(tx2 - tx0) * (float)(y - ty0) / (float)total_h;
+    float xb;
+    if (y < ty1) {
+      int seg = ty1 - ty0;
+      xb = (seg == 0) ? (float)tx1 : tx0 + (float)(tx1 - tx0) * (float)(y - ty0) / (float)seg;
+    } else {
+      int seg = ty2 - ty1;
+      xb = (seg == 0) ? (float)tx1 : tx1 + (float)(tx2 - tx1) * (float)(y - ty1) / (float)seg;
+    }
+    int left  = (int)(xa < xb ? xa : xb);
+    int right = (int)(xa > xb ? xa : xb);
+    SDL_RenderDrawLine( app.renderer, left, y, right, y );
+  }
+
+  SDL_SetRenderDrawColor( app.renderer, 255, 255, 255, 255 );
+  SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_NONE );
+}
 
 void a_DrawRect( const aRectf_t rect, const aColor_t color )
 {
