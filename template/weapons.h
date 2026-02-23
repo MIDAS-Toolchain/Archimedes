@@ -14,9 +14,9 @@ typedef enum {
 } WeaponType_t;
 
 // Chain lightning constants
-#define CHAIN_MAX_JUMPS       4
+#define CHAIN_MAX_JUMPS       3
 #define CHAIN_DELAY           0.065f   // 65ms between jumps
-#define CHAIN_RADIUS          80.0f
+#define CHAIN_RADIUS          90.0f
 #define CHAIN_VISUAL_DURATION 0.15f
 #define CHAIN_COOLDOWN        2.5f
 #define CHAIN_KNOCKBACK       20.0f

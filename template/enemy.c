@@ -7,13 +7,8 @@
 #include <stdlib.h>
 
 // ============================================================================
-// Constants
+// Constants (shared across all types)
 // ============================================================================
-
-#define ENEMY_SPEED 100.0f
-#define ENEMY_SIZE 16.0f
-#define ENEMY_RADIUS 8.0f
-#define ENEMY_HITS_TO_KILL 5
 
 // Knockback
 #define KNOCKBACK_DURATION 0.1f
@@ -29,23 +24,66 @@
 #define BLOOD_LIFETIME 12.0f
 #define BLOOD_FADE_START 10.0f
 
-// AI tuning
+// AI tuning (shared)
 #define PREDICTION_TIME 0.4f
 #define CHARGE_DISTANCE 200.0f
 #define ATTACK_RANGE 120.0f
 #define AGGRO_ATTACK_RANGE 200.0f
-#define ATTACK_SPEED_MULT 2.0f
 #define RETREAT_SPEED_MULT 1.5f
-#define SEPARATION_RADIUS 30.0f
 #define SEPARATION_WEIGHT 60.0f
 #define ATTACK_SEPARATION_SCALE 0.3f
 #define ATTACK_SEPARATION_WEIGHT 30.0f
-#define FLANK_DISTANCE 120.0f
 #define FLANK_ARRIVE_DIST 20.0f
 #define RETREAT_ARRIVE_DIST 10.0f
 #define PLAYER_MIN_DISTANCE 17.0f
 #define OFFSCREEN_MARGIN 100.0f
 #define CORPSE_LIFETIME 12.0f
+#define STUCK_THRESHOLD 2.0f
+#define DASHER_WINDUP_TIME 0.6f
+#define DASHER_WINDUP_PULLBACK 30.0f
+#define DASHER_INDICATOR_LENGTH 200.0f
+
+// ============================================================================
+// Per-type stats table
+// ============================================================================
+
+static const EnemyStats_t enemy_stats[ENEMY_TYPE_COUNT] = {
+  [ENEMY_TYPE_GRUNT] = {
+    .speed = 100.0f, .size = 16.0f, .radius = 8.0f,
+    .hits_to_kill = 5, .damage = 20,
+    .attack_speed_mult = 2.0f,
+    .attack_duration_min = 1.0f, .attack_duration_max = 4.0f,
+    .reposition_duration_min = 2.0f, .reposition_duration_max = 5.0f,
+    .flank_distance = 120.0f, .separation_radius = 30.0f,
+    .skip_reposition = 0
+  },
+  [ENEMY_TYPE_DASHER] = {
+    .speed = 180.0f, .size = 18.0f, .radius = 9.0f,
+    .hits_to_kill = 4, .damage = 15,
+    .attack_speed_mult = 3.0f,
+    .attack_duration_min = 0.5f, .attack_duration_max = 1.5f,
+    .reposition_duration_min = 0.5f, .reposition_duration_max = 1.0f,
+    .flank_distance = 150.0f, .separation_radius = 25.0f,
+    .skip_reposition = 0
+  },
+  [ENEMY_TYPE_BRUTE] = {
+    .speed = 60.0f, .size = 24.0f, .radius = 12.0f,
+    .hits_to_kill = 12, .damage = 40,
+    .attack_speed_mult = 1.5f,
+    .attack_duration_min = 3.0f, .attack_duration_max = 7.0f,
+    .reposition_duration_min = 1.0f, .reposition_duration_max = 2.0f,
+    .flank_distance = 80.0f, .separation_radius = 45.0f,
+    .skip_reposition = 0
+  },
+};
+
+// Damage color: all enemies go green -> red
+#define ENEMY_COLOR_HEALTHY_R 0
+#define ENEMY_COLOR_HEALTHY_G 255
+#define ENEMY_COLOR_HEALTHY_B 0
+#define ENEMY_COLOR_DAMAGED_R 255
+#define ENEMY_COLOR_DAMAGED_G 0
+#define ENEMY_COLOR_DAMAGED_B 0
 
 // ============================================================================
 // Internal State
@@ -56,6 +94,7 @@ static BloodParticle_t* blood_particles = NULL;
 static int max_enemies = 0;
 static int max_blood_particles = 0;
 static int first_kill_dropped = 0;
+static int current_attackers = 0;
 
 extern aApp_t app;
 extern aSoundEffect_t hit_sounds[5];
@@ -72,7 +111,6 @@ static float lerp(float a, float b, float t)
   return a + (b - a) * t;
 }
 
-/** Calculate distance between two points */
 static float dist_between(float x1, float y1, float x2, float y2)
 {
   float dx = x2 - x1;
@@ -80,7 +118,6 @@ static float dist_between(float x1, float y1, float x2, float y2)
   return sqrtf(dx * dx + dy * dy);
 }
 
-/** Normalize a vector in-place, returns the original length */
 static float normalize(float* x, float* y)
 {
   float len = sqrtf((*x) * (*x) + (*y) * (*y));
@@ -91,24 +128,34 @@ static float normalize(float* x, float* y)
   return len;
 }
 
-/** Check if position is too far off screen */
 static int is_offscreen(float x, float y)
 {
   return x < -OFFSCREEN_MARGIN || x > SCREEN_WIDTH + OFFSCREEN_MARGIN ||
          y < -OFFSCREEN_MARGIN || y > SCREEN_HEIGHT + OFFSCREEN_MARGIN;
 }
 
-/**
- * Calculate separation force from nearby enemies.
- * Prevents clumping by pushing enemies away from each other.
- * scale_factor lets attacking enemies care less about separation.
- */
+static const EnemyStats_t* get_stats(Enemy_t* e)
+{
+  return &enemy_stats[e->type];
+}
+
+static int get_total_hp(Enemy_t* e)
+{
+  return get_stats(e)->hits_to_kill + e->bonus_hp;
+}
+
+static float get_effective_speed(Enemy_t* e)
+{
+  return get_stats(e)->speed * e->speed_mult;
+}
+
 static void calc_separation(int self_index, float* out_x, float* out_y, float scale_factor)
 {
   *out_x = 0.0f;
   *out_y = 0.0f;
 
   Enemy_t* self = &enemies[self_index];
+  float my_sep_radius = get_stats(self)->separation_radius;
 
   for (int j = 0; j < max_enemies; j++) {
     if (j == self_index || !enemies[j].active) continue;
@@ -118,24 +165,25 @@ static void calc_separation(int self_index, float* out_x, float* out_y, float sc
     float dy = self->y - enemies[j].y;
     float dist = sqrtf(dx * dx + dy * dy);
 
-    if (dist < SEPARATION_RADIUS && dist > 0.1f) {
-      float strength = (SEPARATION_RADIUS - dist) / SEPARATION_RADIUS * scale_factor;
+    // Use the larger of the two separation radii
+    float other_sep_radius = get_stats(&enemies[j])->separation_radius;
+    float sep_radius = (my_sep_radius > other_sep_radius) ? my_sep_radius : other_sep_radius;
+
+    if (dist < sep_radius && dist > 0.1f) {
+      float strength = (sep_radius - dist) / sep_radius * scale_factor;
       *out_x += (dx / dist) * strength;
       *out_y += (dy / dist) * strength;
     }
   }
 }
 
-/**
- * Move enemy toward a target at a given speed, with separation baked in.
- * This is the core movement pattern shared by ALIVE, REPOSITIONING, and ATTACKING.
- */
 static void move_toward(Enemy_t* e, float target_x, float target_y,
                         float speed, float sep_x, float sep_y,
                         float sep_weight, float dt)
 {
-  float dx = (target_x - (e->x + ENEMY_RADIUS)) + sep_x * sep_weight;
-  float dy = (target_y - (e->y + ENEMY_RADIUS)) + sep_y * sep_weight;
+  float radius = get_stats(e)->radius;
+  float dx = (target_x - (e->x + radius)) + sep_x * sep_weight;
+  float dy = (target_y - (e->y + radius)) + sep_y * sep_weight;
   float dist = sqrtf(dx * dx + dy * dy);
 
   if (dist > 0.1f) {
@@ -150,14 +198,11 @@ static void move_toward(Enemy_t* e, float target_x, float target_y,
   e->y += e->vy * dt;
 }
 
-/**
- * Push enemy out of the player's collision radius.
- * Returns 1 if a collision occurred, 0 otherwise.
- */
 static int resolve_player_collision(Enemy_t* e, float player_x, float player_y)
 {
-  float dx = (e->x + ENEMY_RADIUS) - player_x;
-  float dy = (e->y + ENEMY_RADIUS) - player_y;
+  float radius = get_stats(e)->radius;
+  float dx = (e->x + radius) - player_x;
+  float dy = (e->y + radius) - player_y;
   float dist = sqrtf(dx * dx + dy * dy);
 
   if (dist < PLAYER_MIN_DISTANCE && dist > 0.1f) {
@@ -169,7 +214,6 @@ static int resolve_player_collision(Enemy_t* e, float player_x, float player_y)
   return 0;
 }
 
-/** Start a knockback tween from current position in bullet direction */
 static void start_knockback(Enemy_t* e, float bullet_vx, float bullet_vy, float knockback_dist)
 {
   float bx = bullet_vx;
@@ -188,16 +232,56 @@ static void start_knockback(Enemy_t* e, float bullet_vx, float bullet_vy, float 
   }
 
   e->knockback_timer = 0.0f;
+
+  // Track attacker count when leaving ATTACKING/WINDUP state via knockback
+  if ((e->state == ENEMY_STATE_ATTACKING || e->state == ENEMY_STATE_WINDUP) && current_attackers > 0) {
+    current_attackers--;
+  }
+
   e->state = ENEMY_STATE_HIT_KNOCKBACK;
 }
 
-/** Transition enemy into the REPOSITIONING state with random angle */
 static void enter_reposition(Enemy_t* e)
 {
+  const EnemyStats_t* stats = get_stats(e);
+
+  // Track attacker count when leaving ATTACKING/WINDUP state
+  if ((e->state == ENEMY_STATE_ATTACKING || e->state == ENEMY_STATE_WINDUP) && current_attackers > 0) {
+    current_attackers--;
+  }
+
+  if (stats->skip_reposition) {
+    e->state = ENEMY_STATE_ALIVE;
+    e->stuck_timer = 0.0f;
+    e->last_distance_to_player = 9999.0f;
+    return;
+  }
+
   e->state = ENEMY_STATE_REPOSITIONING;
   e->target_angle = RANDF(0, 2.0f * PI);
-  e->reposition_duration = RANDF(2.0f, 5.0f);
+  e->reposition_duration = RANDF(stats->reposition_duration_min, stats->reposition_duration_max);
   e->stuck_timer = 0.0f;
+}
+
+static void enter_attacking(Enemy_t* e)
+{
+  const EnemyStats_t* stats = get_stats(e);
+  e->aggro = 1;
+  e->flank_x = e->x;
+  e->flank_y = e->y;
+  current_attackers++;
+
+  // Dashers do a windup telegraph before charging
+  if (e->type == ENEMY_TYPE_DASHER) {
+    e->state = ENEMY_STATE_WINDUP;
+    e->windup_timer = DASHER_WINDUP_TIME;
+    e->dash_dir_x = 0.0f;
+    e->dash_dir_y = 0.0f;
+    return;
+  }
+
+  e->state = ENEMY_STATE_ATTACKING;
+  e->attack_duration = RANDF(stats->attack_duration_min, stats->attack_duration_max);
 }
 
 // ============================================================================
@@ -211,6 +295,7 @@ void enemy_init(int max_enemy_count, int max_blood_count)
   enemies = (Enemy_t*)calloc(max_enemies, sizeof(Enemy_t));
   blood_particles = (BloodParticle_t*)calloc(max_blood_particles, sizeof(BloodParticle_t));
   first_kill_dropped = 0;
+  current_attackers = 0;
 }
 
 void enemy_cleanup(void)
@@ -219,13 +304,14 @@ void enemy_cleanup(void)
   enemies = NULL;
   free(blood_particles);
   blood_particles = NULL;
+  current_attackers = 0;
 }
 
 // ============================================================================
 // Spawning
 // ============================================================================
 
-int enemy_spawn(float x, float y)
+int enemy_spawn(float x, float y, EnemyType_t type, float speed_mult, int bonus_hp)
 {
   for (int i = 0; i < max_enemies; i++) {
     if (!enemies[i].active) {
@@ -233,9 +319,11 @@ int enemy_spawn(float x, float y)
         .x = x, .y = y,
         .target_angle = RANDF(0, 2.0f * PI),
         .state = ENEMY_STATE_ALIVE,
+        .type = type,
         .active = 1,
         .last_distance_to_player = 9999.0f,
-        .reposition_timer = RANDF(2.0f, 5.0f),
+        .speed_mult = speed_mult,
+        .bonus_hp = bonus_hp,
       };
       return i;
     }
@@ -247,7 +335,7 @@ int enemy_spawn(float x, float y)
 // Blood Particle System
 // ============================================================================
 
-static void spawn_blood_splatter(float x, float y, float bullet_vx, float bullet_vy)
+static void spawn_blood_splatter(float x, float y, float bullet_vx, float bullet_vy, float radius)
 {
   int count = BLOOD_MIN_PARTICLES + (rand() % (BLOOD_MAX_PARTICLES - BLOOD_MIN_PARTICLES + 1));
 
@@ -259,10 +347,9 @@ static void spawn_blood_splatter(float x, float y, float bullet_vx, float bullet
     for (int j = 0; j < max_blood_particles; j++) {
       if (!blood_particles[j].active) {
         float offset = RANDF(12.0f, 24.0f);
-        blood_particles[j].x = x + ENEMY_RADIUS + dir_x * offset;
-        blood_particles[j].y = y + ENEMY_RADIUS + dir_y * offset;
+        blood_particles[j].x = x + radius + dir_x * offset;
+        blood_particles[j].y = y + radius + dir_y * offset;
 
-        // Rotate bullet direction by a random spread angle (120 degree cone)
         float speed = RANDF(150.0f, 400.0f);
         float angle = RANDF(-PI * 0.6f, PI * 0.6f);
         float c = cosf(angle);
@@ -292,7 +379,6 @@ static void update_blood_particles(float dt)
       continue;
     }
 
-    // Freeze physics after spill animation completes
     if (!p->frozen && p->lifetime >= BLOOD_SPILL_DURATION) {
       p->frozen = 1;
       p->vx = 0.0f;
@@ -304,7 +390,7 @@ static void update_blood_particles(float dt)
       p->y += p->vy * dt;
       p->vx *= 0.95f;
       p->vy *= 0.95f;
-      p->vy += 200.0f * dt; // gravity
+      p->vy += 200.0f * dt;
     }
 
     if (is_offscreen(p->x, p->y)) {
@@ -348,10 +434,9 @@ void enemy_hit(int enemy_index, float bullet_vx, float bullet_vy)
   e->hit_count++;
 
   float knockback_dist = KNOCKBACK_STRENGTH;
-  int killed = (e->hit_count >= ENEMY_HITS_TO_KILL);
+  int killed = (e->hit_count >= get_total_hp(e));
 
   if (killed) {
-    // Killing blow gets extra knockback
     knockback_dist *= KILL_KNOCKBACK_MIN + RANDF(0.0f, KILL_KNOCKBACK_RANGE);
 
     // Store bullet velocity for blood splatter direction after knockback
@@ -387,9 +472,10 @@ int enemy_check_collision(float x, float y, float radius)
   for (int i = 0; i < max_enemies; i++) {
     if (!enemies[i].active || enemies[i].state == ENEMY_STATE_CORPSE) continue;
 
+    float er = get_stats(&enemies[i])->radius;
     float dist = dist_between(x + radius, y + radius,
-                              enemies[i].x + ENEMY_RADIUS, enemies[i].y + ENEMY_RADIUS);
-    if (dist < (radius + ENEMY_RADIUS)) {
+                              enemies[i].x + er, enemies[i].y + er);
+    if (dist < (radius + er)) {
       return i;
     }
   }
@@ -408,33 +494,30 @@ static void update_knockback(Enemy_t* e, float dt)
     e->x = e->knockback_target_x;
     e->y = e->knockback_target_y;
 
-    if (e->hit_count >= ENEMY_HITS_TO_KILL) {
+    if (e->hit_count >= get_total_hp(e)) {
       e->state = ENEMY_STATE_CORPSE;
       e->death_timer = 0.0f;
-      spawn_blood_splatter(e->x, e->y, e->vx, e->vy);
+      spawn_blood_splatter(e->x, e->y, e->vx, e->vy, get_stats(e)->radius);
 
       if (!first_kill_dropped) {
-        // Pick a random weapon the player doesn't have
         WeaponType_t pool[5];
         int pool_count = 0;
-        if (!weapons_has(WEAPON_WAND))  pool[pool_count++] = WEAPON_WAND;
-        if (!weapons_has(WEAPON_SPIN))  pool[pool_count++] = WEAPON_SPIN;
-        if (!weapons_has(WEAPON_CHAIN)) pool[pool_count++] = WEAPON_CHAIN;
-        if (!weapons_has(WEAPON_ORBIT)) pool[pool_count++] = WEAPON_ORBIT;
-        if (!weapons_has(WEAPON_BOMB))  pool[pool_count++] = WEAPON_BOMB;
+        if (!weapons_has(WEAPON_WAND)  && !drops_has_type(WEAPON_WAND))  pool[pool_count++] = WEAPON_WAND;
+        if (!weapons_has(WEAPON_SPIN)  && !drops_has_type(WEAPON_SPIN))  pool[pool_count++] = WEAPON_SPIN;
+        if (!weapons_has(WEAPON_CHAIN) && !drops_has_type(WEAPON_CHAIN)) pool[pool_count++] = WEAPON_CHAIN;
+        if (!weapons_has(WEAPON_ORBIT) && !drops_has_type(WEAPON_ORBIT)) pool[pool_count++] = WEAPON_ORBIT;
+        if (!weapons_has(WEAPON_BOMB)  && !drops_has_type(WEAPON_BOMB))  pool[pool_count++] = WEAPON_BOMB;
         if (pool_count > 0) {
           drops_spawn(e->x, e->y, pool[rand() % pool_count]);
         }
         first_kill_dropped = 1;
       }
     } else if (e->aggro && !player_is_invincible()) {
-      // Aggro'd enemies jump straight back into attack mode
-      e->state = ENEMY_STATE_ATTACKING;
-      e->attack_duration = RANDF(1.0f, 4.0f);
-      e->flank_x = e->x;
-      e->flank_y = e->y;
+      enter_attacking(e);
     } else {
       e->state = ENEMY_STATE_ALIVE;
+      e->stuck_timer = 0.0f;
+      e->last_distance_to_player = 9999.0f;
     }
   } else {
     float t = e->knockback_timer / KNOCKBACK_DURATION;
@@ -447,18 +530,41 @@ static void update_alive(Enemy_t* e, int index, float dt,
                          float player_x, float player_y,
                          float player_vx, float player_vy)
 {
-  float dist = dist_between(e->x + ENEMY_RADIUS, e->y + ENEMY_RADIUS, player_x, player_y);
+  const EnemyStats_t* stats = get_stats(e);
+  float radius = stats->radius;
+  float speed = get_effective_speed(e);
+
+  float dist = dist_between(e->x + radius, e->y + radius, player_x, player_y);
+
+  // Stuck detection: if not making progress toward player, try repositioning
+  if (dist < e->last_distance_to_player - 1.0f) {
+    e->stuck_timer = 0.0f;
+    e->last_distance_to_player = dist;
+  } else {
+    e->stuck_timer += dt;
+    if (e->stuck_timer > STUCK_THRESHOLD) {
+      enter_reposition(e);
+      e->stuck_timer = 0.0f;
+      e->last_distance_to_player = 9999.0f;
+      return;
+    }
+  }
 
   // Close enough? Switch to attack charge (but not while player is invincible)
-  // Aggro'd enemies re-engage from further away
-  float engage_range = e->aggro ? AGGRO_ATTACK_RANGE : ATTACK_RANGE;
+  // Dashers engage from further out for snappier behavior
+  float engage_range;
+  if (e->type == ENEMY_TYPE_DASHER) {
+    engage_range = e->aggro ? AGGRO_ATTACK_RANGE : 200.0f;
+  } else {
+    engage_range = e->aggro ? AGGRO_ATTACK_RANGE : ATTACK_RANGE;
+  }
   if (dist <= engage_range && !player_is_invincible()) {
-    e->state = ENEMY_STATE_ATTACKING;
-    e->aggro = 1;
-    e->attack_duration = RANDF(1.0f, 4.0f);
-    e->flank_x = e->x;
-    e->flank_y = e->y;
-    return;
+    // Attack stagger: limit simultaneous attackers
+    int max_attackers = 3 + (enemy_get_count() / 10);
+    if (current_attackers < max_attackers) {
+      enter_attacking(e);
+      return;
+    }
   }
 
   // Pick a target: predict player position when far, charge direct when close
@@ -473,7 +579,7 @@ static void update_alive(Enemy_t* e, int index, float dt,
 
   float sep_x, sep_y;
   calc_separation(index, &sep_x, &sep_y, 1.0f);
-  move_toward(e, target_x, target_y, ENEMY_SPEED, sep_x, sep_y, SEPARATION_WEIGHT, dt);
+  move_toward(e, target_x, target_y, speed, sep_x, sep_y, SEPARATION_WEIGHT, dt);
   resolve_player_collision(e, player_x, player_y);
 
   if (is_offscreen(e->x, e->y)) e->active = 0;
@@ -482,70 +588,142 @@ static void update_alive(Enemy_t* e, int index, float dt,
 static void update_repositioning(Enemy_t* e, int index, float dt,
                                  float player_x, float player_y)
 {
+  const EnemyStats_t* stats = get_stats(e);
+  float radius = stats->radius;
+  float speed = get_effective_speed(e);
+
   e->reposition_duration -= dt;
 
-  // Target: a point on a circle around the player
-  float target_x = player_x + cosf(e->target_angle) * FLANK_DISTANCE;
-  float target_y = player_y + sinf(e->target_angle) * FLANK_DISTANCE;
+  float target_x = player_x + cosf(e->target_angle) * stats->flank_distance;
+  float target_y = player_y + sinf(e->target_angle) * stats->flank_distance;
 
-  float dist_to_target = dist_between(e->x + ENEMY_RADIUS, e->y + ENEMY_RADIUS,
+  float dist_to_target = dist_between(e->x + radius, e->y + radius,
                                       target_x, target_y);
 
-  // Arrived or timed out? Aggro'd enemies jump back to attacking, others resume pursuit
   if (dist_to_target < FLANK_ARRIVE_DIST || e->reposition_duration <= 0.0f) {
     if (e->aggro && !player_is_invincible()) {
-      e->state = ENEMY_STATE_ATTACKING;
-      e->attack_duration = RANDF(1.0f, 4.0f);
-      e->flank_x = e->x;
-      e->flank_y = e->y;
+      int max_attackers = 3 + (enemy_get_count() / 10);
+      if (current_attackers < max_attackers) {
+        enter_attacking(e);
+      } else {
+        e->state = ENEMY_STATE_ALIVE;
+        e->stuck_timer = 0.0f;
+        e->last_distance_to_player = 9999.0f;
+      }
     } else {
       e->state = ENEMY_STATE_ALIVE;
+      e->stuck_timer = 0.0f;
+      e->last_distance_to_player = 9999.0f;
     }
     return;
   }
 
   float sep_x, sep_y;
   calc_separation(index, &sep_x, &sep_y, 1.0f);
-  move_toward(e, target_x, target_y, ENEMY_SPEED, sep_x, sep_y, SEPARATION_WEIGHT, dt);
+  move_toward(e, target_x, target_y, speed, sep_x, sep_y, SEPARATION_WEIGHT, dt);
   resolve_player_collision(e, player_x, player_y);
 
   if (is_offscreen(e->x, e->y)) e->active = 0;
 }
 
+static void update_windup(Enemy_t* e, float dt, float player_x, float player_y,
+                          float player_vx, float player_vy)
+{
+  const EnemyStats_t* stats = get_stats(e);
+  float radius = stats->radius;
+  float dash_speed = get_effective_speed(e) * stats->attack_speed_mult;
+
+  // Predict where the player will be when the dash arrives
+  float dx_raw = player_x - (e->x + radius);
+  float dy_raw = player_y - (e->y + radius);
+  float dist_to_player = sqrtf(dx_raw * dx_raw + dy_raw * dy_raw);
+  float time_to_reach = (dash_speed > 0.1f) ? dist_to_player / dash_speed : 0.0f;
+
+  float predict_x = player_x + player_vx * time_to_reach;
+  float predict_y = player_y + player_vy * time_to_reach;
+
+  float dx = predict_x - (e->x + radius);
+  float dy = predict_y - (e->y + radius);
+  normalize(&dx, &dy);
+  e->dash_dir_x = dx;
+  e->dash_dir_y = dy;
+
+  // Pull back slightly (opposite of dash direction)
+  float pullback_speed = DASHER_WINDUP_PULLBACK / DASHER_WINDUP_TIME;
+  e->x -= dx * pullback_speed * dt;
+  e->y -= dy * pullback_speed * dt;
+
+  e->windup_timer -= dt;
+  if (e->windup_timer <= 0.0f) {
+    // Transition to actual attack with locked direction
+    e->state = ENEMY_STATE_ATTACKING;
+    e->attack_duration = RANDF(stats->attack_duration_min, stats->attack_duration_max);
+  }
+}
+
 static void update_attacking(Enemy_t* e, int index, float dt,
                              float player_x, float player_y)
 {
+  const EnemyStats_t* stats = get_stats(e);
+  float speed = get_effective_speed(e) * stats->attack_speed_mult;
+
   e->attack_duration -= dt;
 
-  // Player became invincible? Give up the attack and reposition
   if (player_is_invincible()) {
     enter_reposition(e);
     return;
   }
 
-  // Ran out of energy? Give up and reposition
   if (e->attack_duration <= 0.0f) {
     enter_reposition(e);
     return;
   }
 
-  float sep_x, sep_y;
-  calc_separation(index, &sep_x, &sep_y, ATTACK_SEPARATION_SCALE);
-  move_toward(e, player_x, player_y,
-              ENEMY_SPEED * ATTACK_SPEED_MULT,
-              sep_x, sep_y, ATTACK_SEPARATION_WEIGHT, dt);
+  // Dashers charge in their locked direction; others track the player
+  if (e->type == ENEMY_TYPE_DASHER) {
+    e->vx = e->dash_dir_x * speed;
+    e->vy = e->dash_dir_y * speed;
+    e->x += e->vx * dt;
+    e->y += e->vy * dt;
 
-  // If we hit the player, deal damage and bounce back
-  if (resolve_player_collision(e, player_x, player_y)) {
-    player_take_damage(20);
-    e->state = ENEMY_STATE_RETREAT;
+    // Bounce off screen edges
+    float sz = stats->size;
+    if (e->x < 0.0f)                    { e->x = 0.0f;                    e->dash_dir_x = -e->dash_dir_x; }
+    if (e->x + sz > (float)SCREEN_WIDTH) { e->x = (float)SCREEN_WIDTH - sz; e->dash_dir_x = -e->dash_dir_x; }
+    if (e->y < 0.0f)                     { e->y = 0.0f;                    e->dash_dir_y = -e->dash_dir_y; }
+    if (e->y + sz > (float)SCREEN_HEIGHT){ e->y = (float)SCREEN_HEIGHT - sz; e->dash_dir_y = -e->dash_dir_y; }
+  } else {
+    float sep_x, sep_y;
+    calc_separation(index, &sep_x, &sep_y, ATTACK_SEPARATION_SCALE);
+    move_toward(e, player_x, player_y, speed,
+                sep_x, sep_y, ATTACK_SEPARATION_WEIGHT, dt);
   }
 
-  if (is_offscreen(e->x, e->y)) e->active = 0;
+  if (resolve_player_collision(e, player_x, player_y)) {
+    player_take_damage(stats->damage);
+
+    // Leave ATTACKING state
+    if (current_attackers > 0) current_attackers--;
+
+    if (stats->skip_reposition) {
+      e->state = ENEMY_STATE_ALIVE;
+      e->stuck_timer = 0.0f;
+      e->last_distance_to_player = 9999.0f;
+    } else {
+      e->state = ENEMY_STATE_RETREAT;
+    }
+  }
+
+  if (is_offscreen(e->x, e->y)) {
+    if (e->state == ENEMY_STATE_ATTACKING && current_attackers > 0) current_attackers--;
+    e->active = 0;
+  }
 }
 
 static void update_retreat(Enemy_t* e, float dt)
 {
+  float speed = get_effective_speed(e) * RETREAT_SPEED_MULT;
+
   float dist = dist_between(e->x, e->y, e->flank_x, e->flank_y);
 
   if (dist < RETREAT_ARRIVE_DIST) {
@@ -553,13 +731,12 @@ static void update_retreat(Enemy_t* e, float dt)
     return;
   }
 
-  // Move back to flanking position at 1.5x speed (no separation needed)
   float dx = e->flank_x - e->x;
   float dy = e->flank_y - e->y;
   normalize(&dx, &dy);
 
-  e->vx = dx * ENEMY_SPEED * RETREAT_SPEED_MULT;
-  e->vy = dy * ENEMY_SPEED * RETREAT_SPEED_MULT;
+  e->vx = dx * speed;
+  e->vy = dy * speed;
   e->x += e->vx * dt;
   e->y += e->vy * dt;
 
@@ -592,6 +769,7 @@ void enemy_update(float dt, float player_x, float player_y,
       case ENEMY_STATE_HIT_KNOCKBACK: update_knockback(e, dt);                                  break;
       case ENEMY_STATE_ALIVE:         update_alive(e, i, dt, player_x, player_y, player_vx, player_vy); break;
       case ENEMY_STATE_REPOSITIONING: update_repositioning(e, i, dt, player_x, player_y);       break;
+      case ENEMY_STATE_WINDUP:        update_windup(e, dt, player_x, player_y, player_vx, player_vy); break;
       case ENEMY_STATE_ATTACKING:     update_attacking(e, i, dt, player_x, player_y);           break;
       case ENEMY_STATE_RETREAT:       update_retreat(e, dt);                                     break;
       case ENEMY_STATE_CORPSE:        update_corpse(e, dt);                                      break;
@@ -611,16 +789,22 @@ void enemy_draw(void)
     if (!enemies[i].active) continue;
 
     Enemy_t* e = &enemies[i];
+    const EnemyStats_t* stats = get_stats(e);
 
-    // Color shifts green -> yellow -> red based on damage taken
-    int r = 0, g = 255, b = 0;
-    if (e->hit_count >= 1) {
-      float damage_pct = e->hit_count / (float)ENEMY_HITS_TO_KILL;
-      r = (int)(damage_pct * 255.0f);
-      g = (int)(255.0f - damage_pct * 255.0f);
-      if (r > 255) r = 255;
-      if (g < 0) g = 0;
-    }
+    // Damage gradient: green -> red for all enemy types
+    int total_hp = get_total_hp(e);
+    float damage_pct = (total_hp > 0) ? (float)e->hit_count / (float)total_hp : 0.0f;
+    if (damage_pct > 1.0f) damage_pct = 1.0f;
+
+    int r = ENEMY_COLOR_HEALTHY_R + (int)((ENEMY_COLOR_DAMAGED_R - ENEMY_COLOR_HEALTHY_R) * damage_pct);
+    int g = ENEMY_COLOR_HEALTHY_G + (int)((ENEMY_COLOR_DAMAGED_G - ENEMY_COLOR_HEALTHY_G) * damage_pct);
+    int b = ENEMY_COLOR_HEALTHY_B + (int)((ENEMY_COLOR_DAMAGED_B - ENEMY_COLOR_HEALTHY_B) * damage_pct);
+    if (r > 255) r = 255;
+    if (r < 0) r = 0;
+    if (g > 255) g = 255;
+    if (g < 0) g = 0;
+    if (b > 255) b = 255;
+    if (b < 0) b = 0;
 
     // Corpses fade out in their final 2 seconds
     int alpha = 255;
@@ -630,14 +814,65 @@ void enemy_draw(void)
       if (alpha < 0) alpha = 0;
     }
 
-    a_DrawFilledRect(
-      (aRectf_t){e->x, e->y, ENEMY_SIZE, ENEMY_SIZE},
-      (aColor_t){r, g, b, alpha}
-    );
+    aColor_t color = {r, g, b, alpha};
 
-    // State indicator letter (debug visualization)
+    if (e->type == ENEMY_TYPE_DASHER) {
+      // Triangle pointing toward player (or toward dash direction during windup/attack)
+      float cx = e->x + stats->size / 2.0f;
+      float cy = e->y + stats->size / 2.0f;
+      float half = stats->size / 2.0f;
+
+      float dir_x, dir_y;
+      if ((e->state == ENEMY_STATE_WINDUP || e->state == ENEMY_STATE_ATTACKING)
+          && (e->dash_dir_x != 0.0f || e->dash_dir_y != 0.0f)) {
+        dir_x = e->dash_dir_x;
+        dir_y = e->dash_dir_y;
+      } else {
+        dir_x = e->vx;
+        dir_y = e->vy;
+        float len = sqrtf(dir_x * dir_x + dir_y * dir_y);
+        if (len > 0.1f) { dir_x /= len; dir_y /= len; }
+        else { dir_x = 0.0f; dir_y = -1.0f; }
+      }
+
+      // Tip = center + dir * half, two base corners perpendicular to dir
+      float perp_x = -dir_y;
+      float perp_y = dir_x;
+      int tip_x = (int)(cx + dir_x * half * 1.3f);
+      int tip_y = (int)(cy + dir_y * half * 1.3f);
+      int base1_x = (int)(cx - dir_x * half + perp_x * half);
+      int base1_y = (int)(cy - dir_y * half + perp_y * half);
+      int base2_x = (int)(cx - dir_x * half - perp_x * half);
+      int base2_y = (int)(cy - dir_y * half - perp_y * half);
+
+      a_DrawFilledTriangle(tip_x, tip_y, base1_x, base1_y, base2_x, base2_y, color);
+    } else {
+      a_DrawFilledRect(
+        (aRectf_t){e->x, e->y, stats->size, stats->size},
+        color
+      );
+    }
+
+    // Dasher windup: draw red indicator line showing dash trajectory
+    if (e->state == ENEMY_STATE_WINDUP && e->dash_dir_x != 0.0f && e->dash_dir_y != 0.0f) {
+      float cx = e->x + stats->size / 2.0f;
+      float cy = e->y + stats->size / 2.0f;
+      float progress = 1.0f - (e->windup_timer / DASHER_WINDUP_TIME);  // 0 -> 1
+      int line_alpha = (int)(180 * progress);  // Fades in as windup progresses
+      if (line_alpha > 180) line_alpha = 180;
+      float line_len = DASHER_INDICATOR_LENGTH * progress;
+      a_DrawLine(
+        (int)cx, (int)cy,
+        (int)(cx + e->dash_dir_x * line_len),
+        (int)(cy + e->dash_dir_y * line_len),
+        (aColor_t){255, 40, 40, line_alpha}
+      );
+    }
+
+    // State indicator letter
     const char* label = NULL;
     switch (e->state) {
+      case ENEMY_STATE_WINDUP:         label = "W"; break;
       case ENEMY_STATE_ATTACKING:      label = "C"; break;
       case ENEMY_STATE_REPOSITIONING:  label = "F"; break;
       case ENEMY_STATE_RETREAT:        label = "R"; break;
@@ -652,10 +887,9 @@ void enemy_draw(void)
         .align = TEXT_ALIGN_CENTER,
         .scale = 0.6f
       };
-      int lx = (int)(e->x + ENEMY_SIZE / 2);
+      int lx = (int)(e->x + stats->size / 2);
       int ly = (int)(e->y - 4);
 
-      // Faux-bold: draw at slight offsets then draw main on top
       a_DrawText(label, lx - 1, ly, style);
       a_DrawText(label, lx + 1, ly, style);
       a_DrawText(label, lx, ly - 1, style);
@@ -720,6 +954,12 @@ int enemy_is_alive(int enemy_index)
   return (s != ENEMY_STATE_CORPSE && s != ENEMY_STATE_HIT_KNOCKBACK);
 }
 
+float enemy_get_radius(int enemy_index)
+{
+  if (enemy_index < 0 || enemy_index >= max_enemies) return 8.0f;
+  return get_stats(&enemies[enemy_index])->radius;
+}
+
 int enemy_find_cluster_target(float radius, float player_x, float player_y)
 {
   int best = -1;
@@ -729,19 +969,21 @@ int enemy_find_cluster_target(float radius, float player_x, float player_y)
   for (int i = 0; i < max_enemies; i++) {
     if (!enemy_is_alive(i)) continue;
 
-    // Count neighbors within chain radius
+    float er_i = get_stats(&enemies[i])->radius;
+
     int neighbors = 0;
     for (int j = 0; j < max_enemies; j++) {
       if (j == i || !enemy_is_alive(j)) continue;
+      float er_j = get_stats(&enemies[j])->radius;
       float d = dist_between(
-        enemies[i].x + ENEMY_RADIUS, enemies[i].y + ENEMY_RADIUS,
-        enemies[j].x + ENEMY_RADIUS, enemies[j].y + ENEMY_RADIUS
+        enemies[i].x + er_i, enemies[i].y + er_i,
+        enemies[j].x + er_j, enemies[j].y + er_j
       );
       if (d <= radius) neighbors++;
     }
 
     float d_player = dist_between(
-      enemies[i].x + ENEMY_RADIUS, enemies[i].y + ENEMY_RADIUS,
+      enemies[i].x + er_i, enemies[i].y + er_i,
       player_x, player_y
     );
 
@@ -761,7 +1003,8 @@ int enemy_find_cluster_position(float radius, float player_x, float player_y,
 {
   int idx = enemy_find_cluster_target(radius, player_x, player_y);
   if (idx < 0) return 0;
-  *out_x = enemies[idx].x + ENEMY_RADIUS + enemies[idx].vx * lead_time;
-  *out_y = enemies[idx].y + ENEMY_RADIUS + enemies[idx].vy * lead_time;
+  float er = get_stats(&enemies[idx])->radius;
+  *out_x = enemies[idx].x + er + enemies[idx].vx * lead_time;
+  *out_y = enemies[idx].y + er + enemies[idx].vy * lead_time;
   return 1;
 }

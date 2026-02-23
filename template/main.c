@@ -64,7 +64,51 @@ static float time_remaining = 15.0f * 60.0f; // 15 minutes in seconds
 #define MAX_ENEMIES 50
 #define MAX_BLOOD_PARTICLES 500
 static float spawn_timer = 0.0f;
-static float spawn_interval = 2.0f; // spawn every 2 seconds
+static float game_elapsed_timer = 0.0f;
+
+// Difficulty scaling helpers
+static float get_spawn_interval( void )
+{
+  float t = game_elapsed_timer;
+  if ( t > 300.0f ) t = 300.0f;
+  return 2.0f - (1.6f * (t / 300.0f));  // 2.0s -> 0.4s over 5 minutes
+}
+
+static float get_speed_mult( void )
+{
+  float t = game_elapsed_timer;
+  if ( t > 600.0f ) t = 600.0f;
+  return 1.0f + 0.5f * (t / 600.0f);  // 1.0x -> 1.5x over 10 minutes
+}
+
+static int get_hp_bonus( void )
+{
+  float t = game_elapsed_timer;
+  if ( t > 900.0f ) t = 900.0f;
+  return (int)(5.0f * (t / 900.0f));  // 0 -> +5 extra hits over 15 minutes
+}
+
+static int get_max_active_enemies( void )
+{
+  float t = game_elapsed_timer;
+  if ( t > 300.0f ) t = 300.0f;
+  return 15 + (int)(35.0f * (t / 300.0f));  // 15 -> 50 over 5 minutes
+}
+
+static EnemyType_t pick_enemy_type( void )
+{
+  float t = game_elapsed_timer;
+  float grunt_w = 1.0f;
+  float dasher_w = (t > 30.0f) ? fminf((t - 30.0f) / 60.0f, 0.4f) : 0.0f;
+  float brute_w = (t > 90.0f) ? fminf((t - 90.0f) / 120.0f, 0.25f) : 0.0f;
+
+  float total = grunt_w + dasher_w + brute_w;
+  float roll = RANDF(0, total);
+
+  if ( roll < brute_w ) return ENEMY_TYPE_BRUTE;
+  if ( roll < brute_w + dasher_w ) return ENEMY_TYPE_DASHER;
+  return ENEMY_TYPE_GRUNT;
+}
 
 // Health drop spawning
 #define HEALTH_DROP_INTERVAL 10.0f
@@ -74,7 +118,6 @@ static float health_drop_timer = 0.0f;
 #define WEAPON_DROP_TIME   20.0f
 #define WEAPON_DROP_TIME_2 40.0f
 #define WEAPON_DROP_TIME_3 60.0f
-static float game_elapsed_timer = 0.0f;
 static int timed_weapon_dropped = 0;
 static int timed_weapon_dropped_2 = 0;
 static int timed_weapon_dropped_3 = 0;
@@ -230,14 +273,16 @@ static void scene_game_logic( float dt )
     time_remaining = 0.0f;
   }
 
-  // Spawn enemies (only if not at max capacity)
+  // Spawn enemies (dynamic difficulty)
   int current_enemy_count = enemy_get_count();
-  if ( current_enemy_count < MAX_ENEMIES )
+  int max_active = get_max_active_enemies();
+  if ( current_enemy_count < max_active )
   {
     spawn_timer += dt;
   }
 
-  if ( spawn_timer >= spawn_interval && current_enemy_count < MAX_ENEMIES )
+  float current_spawn_interval = get_spawn_interval();
+  if ( spawn_timer >= current_spawn_interval && current_enemy_count < max_active )
   {
     spawn_timer = 0.0f;
 
@@ -266,7 +311,7 @@ static void scene_game_logic( float dt )
       spawn_y = RANDF( 0, SCREEN_HEIGHT );
     }
 
-    enemy_spawn( spawn_x, spawn_y );
+    enemy_spawn( spawn_x, spawn_y, pick_enemy_type(), get_speed_mult(), get_hp_bonus() );
   }
 
   // Check bullet collisions with enemies (alive or repositioning, not corpses)
@@ -277,7 +322,7 @@ static void scene_game_logic( float dt )
     {
       float enemy_x, enemy_y;
       enemy_get_position( j, &enemy_x, &enemy_y );
-      int bullet_hit = player_check_bullet_collision( enemy_x, enemy_y, 8.0f );
+      int bullet_hit = player_check_bullet_collision( enemy_x, enemy_y, enemy_get_radius( j ) );
 
       if ( bullet_hit >= 0 )
       {
@@ -319,11 +364,11 @@ static void scene_game_logic( float dt )
     health_drop_timer = 0.0f;  // Reset health timer so they don't overlap
     WeaponType_t pool[5];
     int pool_count = 0;
-    if ( !weapons_has( WEAPON_WAND ) )  pool[pool_count++] = WEAPON_WAND;
-    if ( !weapons_has( WEAPON_SPIN ) )  pool[pool_count++] = WEAPON_SPIN;
-    if ( !weapons_has( WEAPON_CHAIN ) ) pool[pool_count++] = WEAPON_CHAIN;
-    if ( !weapons_has( WEAPON_ORBIT ) ) pool[pool_count++] = WEAPON_ORBIT;
-    if ( !weapons_has( WEAPON_BOMB ) )  pool[pool_count++] = WEAPON_BOMB;
+    if ( !weapons_has( WEAPON_WAND )  && !drops_has_type( WEAPON_WAND ) )  pool[pool_count++] = WEAPON_WAND;
+    if ( !weapons_has( WEAPON_SPIN )  && !drops_has_type( WEAPON_SPIN ) )  pool[pool_count++] = WEAPON_SPIN;
+    if ( !weapons_has( WEAPON_CHAIN ) && !drops_has_type( WEAPON_CHAIN ) ) pool[pool_count++] = WEAPON_CHAIN;
+    if ( !weapons_has( WEAPON_ORBIT ) && !drops_has_type( WEAPON_ORBIT ) ) pool[pool_count++] = WEAPON_ORBIT;
+    if ( !weapons_has( WEAPON_BOMB )  && !drops_has_type( WEAPON_BOMB ) )  pool[pool_count++] = WEAPON_BOMB;
     if ( pool_count > 0 )
     {
       WeaponType_t chosen = pool[rand() % pool_count];
@@ -351,11 +396,11 @@ static void scene_game_logic( float dt )
     health_drop_timer = 0.0f;
     WeaponType_t pool2[5];
     int pool2_count = 0;
-    if ( !weapons_has( WEAPON_WAND ) )  pool2[pool2_count++] = WEAPON_WAND;
-    if ( !weapons_has( WEAPON_SPIN ) )  pool2[pool2_count++] = WEAPON_SPIN;
-    if ( !weapons_has( WEAPON_CHAIN ) ) pool2[pool2_count++] = WEAPON_CHAIN;
-    if ( !weapons_has( WEAPON_ORBIT ) ) pool2[pool2_count++] = WEAPON_ORBIT;
-    if ( !weapons_has( WEAPON_BOMB ) )  pool2[pool2_count++] = WEAPON_BOMB;
+    if ( !weapons_has( WEAPON_WAND )  && !drops_has_type( WEAPON_WAND ) )  pool2[pool2_count++] = WEAPON_WAND;
+    if ( !weapons_has( WEAPON_SPIN )  && !drops_has_type( WEAPON_SPIN ) )  pool2[pool2_count++] = WEAPON_SPIN;
+    if ( !weapons_has( WEAPON_CHAIN ) && !drops_has_type( WEAPON_CHAIN ) ) pool2[pool2_count++] = WEAPON_CHAIN;
+    if ( !weapons_has( WEAPON_ORBIT ) && !drops_has_type( WEAPON_ORBIT ) ) pool2[pool2_count++] = WEAPON_ORBIT;
+    if ( !weapons_has( WEAPON_BOMB )  && !drops_has_type( WEAPON_BOMB ) )  pool2[pool2_count++] = WEAPON_BOMB;
     if ( pool2_count > 0 )
     {
       WeaponType_t chosen2 = pool2[rand() % pool2_count];
@@ -382,11 +427,11 @@ static void scene_game_logic( float dt )
     health_drop_timer = 0.0f;
     WeaponType_t pool3[5];
     int pool3_count = 0;
-    if ( !weapons_has( WEAPON_WAND ) )  pool3[pool3_count++] = WEAPON_WAND;
-    if ( !weapons_has( WEAPON_SPIN ) )  pool3[pool3_count++] = WEAPON_SPIN;
-    if ( !weapons_has( WEAPON_CHAIN ) ) pool3[pool3_count++] = WEAPON_CHAIN;
-    if ( !weapons_has( WEAPON_ORBIT ) ) pool3[pool3_count++] = WEAPON_ORBIT;
-    if ( !weapons_has( WEAPON_BOMB ) )  pool3[pool3_count++] = WEAPON_BOMB;
+    if ( !weapons_has( WEAPON_WAND )  && !drops_has_type( WEAPON_WAND ) )  pool3[pool3_count++] = WEAPON_WAND;
+    if ( !weapons_has( WEAPON_SPIN )  && !drops_has_type( WEAPON_SPIN ) )  pool3[pool3_count++] = WEAPON_SPIN;
+    if ( !weapons_has( WEAPON_CHAIN ) && !drops_has_type( WEAPON_CHAIN ) ) pool3[pool3_count++] = WEAPON_CHAIN;
+    if ( !weapons_has( WEAPON_ORBIT ) && !drops_has_type( WEAPON_ORBIT ) ) pool3[pool3_count++] = WEAPON_ORBIT;
+    if ( !weapons_has( WEAPON_BOMB )  && !drops_has_type( WEAPON_BOMB ) )  pool3[pool3_count++] = WEAPON_BOMB;
     if ( pool3_count > 0 )
     {
       WeaponType_t chosen3 = pool3[rand() % pool3_count];
@@ -509,13 +554,13 @@ static void scene_game_draw( float dt )
 
   // Draw spawn timer (pauses at 0:00 if at max capacity)
   char spawn_timer_text[32];
-  if ( current_enemy_count >= MAX_ENEMIES )
+  if ( current_enemy_count >= get_max_active_enemies() )
   {
     snprintf( spawn_timer_text, sizeof(spawn_timer_text), "Next spawn: --" );
   }
   else
   {
-    float time_until_spawn = spawn_interval - spawn_timer;
+    float time_until_spawn = get_spawn_interval() - spawn_timer;
     if ( time_until_spawn < 0.0f ) time_until_spawn = 0.0f;
     int spawn_seconds = (int)time_until_spawn;
     int spawn_hundredths = (int)((time_until_spawn - spawn_seconds) * 100);

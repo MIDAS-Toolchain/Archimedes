@@ -201,9 +201,9 @@ static void fire_chain(void)
     int prev = chain_state.targets[jump - 1];
     float prev_x, prev_y;
     enemy_get_position(prev, &prev_x, &prev_y);
-    // enemy_get_position returns top-left, center is +8
-    float cx = prev_x + 8.0f;
-    float cy = prev_y + 8.0f;
+    float prev_r = enemy_get_radius(prev);
+    float cx = prev_x + prev_r;
+    float cy = prev_y + prev_r;
 
     int best = -1;
     float best_dist = CHAIN_RADIUS + 1.0f;
@@ -220,8 +220,9 @@ static void fire_chain(void)
 
       float ex, ey;
       enemy_get_position(e, &ex, &ey);
-      float ecx = ex + 8.0f;
-      float ecy = ey + 8.0f;
+      float er = enemy_get_radius(e);
+      float ecx = ex + er;
+      float ecy = ey + er;
 
       float dx = ecx - cx;
       float dy = ecy - cy;
@@ -242,8 +243,9 @@ static void fire_chain(void)
     int t = chain_state.targets[0];
     float ex, ey;
     enemy_get_position(t, &ex, &ey);
-    float ecx = ex + 8.0f;
-    float ecy = ey + 8.0f;
+    float tr = enemy_get_radius(t);
+    float ecx = ex + tr;
+    float ecy = ey + tr;
 
     // Knockback direction: player -> enemy
     float dx = ecx - px;
@@ -334,8 +336,9 @@ static void bomb_update(float dt)
 
         float ex, ey;
         enemy_get_position(e, &ex, &ey);
-        float ecx = ex + 8.0f;
-        float ecy = ey + 8.0f;
+        float er = enemy_get_radius(e);
+        float ecx = ex + er;
+        float ecy = ey + er;
 
         float dx = ecx - ix;
         float dy = ecy - iy;
@@ -431,14 +434,15 @@ static void orbit_update(float dt)
 
     float ex, ey;
     enemy_get_position(e, &ex, &ey);
-    float ecx = ex + 8.0f;
-    float ecy = ey + 8.0f;
+    float er = enemy_get_radius(e);
+    float ecx = ex + er;
+    float ecy = ey + er;
 
     float dx = orb_x - ecx;
     float dy = orb_y - ecy;
     float dist = sqrtf(dx * dx + dy * dy);
 
-    if (dist < (ORBIT_ORB_SIZE + 8.0f)) {
+    if (dist < (ORBIT_ORB_SIZE + er)) {
       // Knockback: player center -> enemy
       float kx = ecx - px;
       float ky = ecy - py;
@@ -474,10 +478,12 @@ static void chain_update(float dt)
     float cur_x, cur_y, prev_x, prev_y;
     enemy_get_position(cur, &cur_x, &cur_y);
     enemy_get_position(prev, &prev_x, &prev_y);
-    float ccx = cur_x + 8.0f;
-    float ccy = cur_y + 8.0f;
-    float pcx = prev_x + 8.0f;
-    float pcy = prev_y + 8.0f;
+    float cr = enemy_get_radius(cur);
+    float pr = enemy_get_radius(prev);
+    float ccx = cur_x + cr;
+    float ccy = cur_y + cr;
+    float pcx = prev_x + pr;
+    float pcy = prev_y + pr;
 
     // Knockback direction: previous enemy -> current enemy
     float dx = ccx - pcx;
