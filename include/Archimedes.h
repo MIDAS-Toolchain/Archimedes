@@ -274,6 +274,7 @@ typedef struct
 {
   aRectf_t rect;
   int max_length;
+  int visible_length;
   int text_offset;
   char* text;
 } aInputWidget_t;
@@ -1302,6 +1303,8 @@ int a_GlyphExists(int font_type, unsigned int codepoint);
  * @return Glyph index to use (either requested or fallback)
  */
 int a_GetGlyphOrFallback(int font_type, unsigned int codepoint);
+
+aRectf_t a_GetGlyphSize( void );
 
 /*
 ---------------------------------------------------------------

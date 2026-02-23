@@ -21,6 +21,7 @@ hidden:0
 padding:10
 (w,h):(200,200)
 max_length:128
+visible_length:16
 text_offset:5
 fg:[0,0,0,255]
 bg:[164,221,219,255]
