@@ -52,7 +52,7 @@ void a_DoWidget( void )
 {
   slider_delay = MAX( slider_delay - a_GetDeltaTime(), 0 );
 
-  cursor_blink += a_GetDeltaTime();
+  //cursor_blink += a_GetDeltaTime();
 
   ClearWidgetsState(); 
   
@@ -196,6 +196,16 @@ void a_DoWidget( void )
   else if ( handle_input_widget )
   {
     DoInputWidget();
+    aInputWidget_t* curr_input = (aInputWidget_t*)app.active_widget->data;
+    aRectf_t glpyh_rect = a_GetGlyphSize();
+    
+    aRectf_t current_rect = (aRectf_t){
+      .x = ( curr_input->rect.x ),
+      .y = ( curr_input->rect.y ),
+      .w = ( glpyh_rect.w * curr_input->visible_length ),
+      .h = ( glpyh_rect.h )
+    };
+    
     if ( app.keyboard[A_ESCAPE] == 1 )
     {
       app.keyboard[A_ESCAPE] = 0;
@@ -205,9 +215,14 @@ void a_DoWidget( void )
 
     if( app.mouse.button == 1 && app.mouse.clicks == 2 )
     {
+      if ( WithinRange( app.mouse.x, app.mouse.y, current_rect ) )
+      {
+        handle_input_widget = 0;
+        return;
+      }
+
       app.mouse.button = 0;
       app.mouse.clicks = 0;
-      aInputWidget_t* curr_input = (aInputWidget_t*)app.active_widget->data;
       memset( curr_input->text, 0, MAX_NAME_LENGTH );
     }
   }
