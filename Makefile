@@ -79,7 +79,16 @@ NATIVE_SRCS = player_actions.c\
 							enemy.c\
 							hotbar.c\
 							weapons.c\
-							drops.c
+							drops.c\
+							pickups.c\
+							game_audio.c\
+							blood.c\
+							game_director.c\
+							collision.c\
+							game_hud.c\
+						xp.c\
+						upgrades.c\
+						fire_particles.c
 
 SHARED_OBJS = $(patsubst %.c, $(OBJ_DIR_SHARED)/%.o, $(ARCHIMEDES_SRCS))
 TEMPLATE_OBJS = $(patsubst %.c, $(OBJ_DIR_NATIVE)/%.o, $(NATIVE_SRCS))

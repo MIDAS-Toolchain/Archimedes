@@ -2,6 +2,9 @@
 #include "drops.h"
 #include "weapons.h"
 #include "player_actions.h"
+#include "pickups.h"
+#include "game_audio.h"
+#include "blood.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,14 +19,6 @@
 #define KILL_KNOCKBACK_MIN 1.5f
 #define KILL_KNOCKBACK_RANGE 0.75f
 
-// Blood particles
-#define BLOOD_SPILL_DURATION 0.2f
-#define BLOOD_PARTICLE_SIZE 3.0f
-#define BLOOD_MIN_PARTICLES 30
-#define BLOOD_MAX_PARTICLES 50
-#define BLOOD_LIFETIME 12.0f
-#define BLOOD_FADE_START 10.0f
-
 // AI tuning (shared)
 #define PREDICTION_TIME 0.4f
 #define CHARGE_DISTANCE 200.0f
@@ -37,11 +32,34 @@
 #define RETREAT_ARRIVE_DIST 10.0f
 #define PLAYER_MIN_DISTANCE 17.0f
 #define OFFSCREEN_MARGIN 100.0f
-#define CORPSE_LIFETIME 12.0f
+#define CORPSE_LIFETIME 4.0f
+#define CORPSE_FADE_START 2.0f
 #define STUCK_THRESHOLD 2.0f
 #define DASHER_WINDUP_TIME 0.6f
 #define DASHER_WINDUP_PULLBACK 30.0f
 #define DASHER_INDICATOR_LENGTH 200.0f
+
+// Brute health-stealing
+#define BRUTE_HEAL_BASE_RADIUS 80.0f
+#define BRUTE_HEAL_PER_HIT_RADIUS 30.0f  // Search radius grows per hit taken
+#define BRUTE_HEAL_MAX_RADIUS 400.0f
+#define BRUTE_HEAL_SPEED_MULT 2.5f       // Sprint speed when chasing health (on top of rage)
+#define BRUTE_HEAL_PICKUP_DIST 20.0f     // Close enough to consume the drop
+#define BRUTE_HEAL_AMOUNT 3              // Hits healed per pickup
+
+// Brute rage: speed scales with damage taken
+#define BRUTE_RAGE_MAX_SPEED_MULT 2.0f   // At full damage: 2x base speed
+
+// Brute buff constants
+#define BRUTE_FIRE_CONE_RANGE     100.0f
+#define BRUTE_FIRE_CONE_HALF_ANGLE 0.5236f // 30 degrees
+#define BRUTE_FIRE_CONE_TICK_RATE 0.2f
+#define BRUTE_FIRE_CONE_DAMAGE    10
+#define BRUTE_FIRE_DURATION       4.0f
+#define BRUTE_SPEED_DURATION      3.0f
+#define BRUTE_SPEED_MULT          1.5f
+#define BRUTE_SHIELD_DURATION     5.0f
+#define BRUTE_SHIELD_HITS         3
 
 // ============================================================================
 // Per-type stats table
@@ -90,17 +108,14 @@ static const EnemyStats_t enemy_stats[ENEMY_TYPE_COUNT] = {
 // ============================================================================
 
 static Enemy_t* enemies = NULL;
-static BloodParticle_t* blood_particles = NULL;
 static int max_enemies = 0;
-static int max_blood_particles = 0;
 static int first_kill_dropped = 0;
 static int current_attackers = 0;
 
 extern aApp_t app;
-extern aSoundEffect_t hit_sounds[5];
-extern int hit_sounds_loaded;
-extern aSoundEffect_t die_sound;
-extern int die_loaded;
+
+// Forward declarations
+static int brute_evaluate_priorities(Enemy_t* e);
 
 // ============================================================================
 // Utility Helpers
@@ -146,7 +161,23 @@ static int get_total_hp(Enemy_t* e)
 
 static float get_effective_speed(Enemy_t* e)
 {
-  return get_stats(e)->speed * e->speed_mult;
+  float speed = get_stats(e)->speed * e->speed_mult;
+
+  // Brute rage: speed increases with damage taken
+  if (e->type == ENEMY_TYPE_BRUTE) {
+    int total_hp = get_total_hp(e);
+    float damage_pct = (total_hp > 0) ? (float)e->hit_count / (float)total_hp : 0.0f;
+    if (damage_pct > 1.0f) damage_pct = 1.0f;
+    // Lerp from 1.0x to BRUTE_RAGE_MAX_SPEED_MULT based on damage
+    speed *= 1.0f + (BRUTE_RAGE_MAX_SPEED_MULT - 1.0f) * damage_pct;
+
+    // Speed buff stacks on top of rage
+    if (e->brute_buff.active && e->brute_buff_type == PICKUP_SPEED) {
+      speed *= BRUTE_SPEED_MULT;
+    }
+  }
+
+  return speed;
 }
 
 static void calc_separation(int self_index, float* out_x, float* out_y, float scale_factor)
@@ -291,9 +322,8 @@ static void enter_attacking(Enemy_t* e)
 void enemy_init(int max_enemy_count, int max_blood_count)
 {
   max_enemies = max_enemy_count;
-  max_blood_particles = max_blood_count;
   enemies = (Enemy_t*)calloc(max_enemies, sizeof(Enemy_t));
-  blood_particles = (BloodParticle_t*)calloc(max_blood_particles, sizeof(BloodParticle_t));
+  blood_init(max_blood_count);
   first_kill_dropped = 0;
   current_attackers = 0;
 }
@@ -302,8 +332,7 @@ void enemy_cleanup(void)
 {
   free(enemies);
   enemies = NULL;
-  free(blood_particles);
-  blood_particles = NULL;
+  blood_cleanup();
   current_attackers = 0;
 }
 
@@ -332,94 +361,6 @@ int enemy_spawn(float x, float y, EnemyType_t type, float speed_mult, int bonus_
 }
 
 // ============================================================================
-// Blood Particle System
-// ============================================================================
-
-static void spawn_blood_splatter(float x, float y, float bullet_vx, float bullet_vy, float radius)
-{
-  int count = BLOOD_MIN_PARTICLES + (rand() % (BLOOD_MAX_PARTICLES - BLOOD_MIN_PARTICLES + 1));
-
-  float dir_x = bullet_vx;
-  float dir_y = bullet_vy;
-  normalize(&dir_x, &dir_y);
-
-  for (int i = 0; i < count; i++) {
-    for (int j = 0; j < max_blood_particles; j++) {
-      if (!blood_particles[j].active) {
-        float offset = RANDF(12.0f, 24.0f);
-        blood_particles[j].x = x + radius + dir_x * offset;
-        blood_particles[j].y = y + radius + dir_y * offset;
-
-        float speed = RANDF(150.0f, 400.0f);
-        float angle = RANDF(-PI * 0.6f, PI * 0.6f);
-        float c = cosf(angle);
-        float s = sinf(angle);
-        blood_particles[j].vx = (dir_x * c - dir_y * s) * speed;
-        blood_particles[j].vy = (dir_x * s + dir_y * c) * speed;
-
-        blood_particles[j].lifetime = 0.0f;
-        blood_particles[j].active = 1;
-        blood_particles[j].frozen = 0;
-        break;
-      }
-    }
-  }
-}
-
-static void update_blood_particles(float dt)
-{
-  for (int i = 0; i < max_blood_particles; i++) {
-    BloodParticle_t* p = &blood_particles[i];
-    if (!p->active) continue;
-
-    p->lifetime += dt;
-
-    if (p->lifetime >= BLOOD_LIFETIME) {
-      p->active = 0;
-      continue;
-    }
-
-    if (!p->frozen && p->lifetime >= BLOOD_SPILL_DURATION) {
-      p->frozen = 1;
-      p->vx = 0.0f;
-      p->vy = 0.0f;
-    }
-
-    if (!p->frozen) {
-      p->x += p->vx * dt;
-      p->y += p->vy * dt;
-      p->vx *= 0.95f;
-      p->vy *= 0.95f;
-      p->vy += 200.0f * dt;
-    }
-
-    if (is_offscreen(p->x, p->y)) {
-      p->active = 0;
-    }
-  }
-}
-
-static void draw_blood_particles(void)
-{
-  for (int i = 0; i < max_blood_particles; i++) {
-    BloodParticle_t* p = &blood_particles[i];
-    if (!p->active) continue;
-
-    int alpha = 255;
-    if (p->lifetime > BLOOD_FADE_START) {
-      float fade = (p->lifetime - BLOOD_FADE_START) / (BLOOD_LIFETIME - BLOOD_FADE_START);
-      alpha = (int)(255 * (1.0f - fade));
-      if (alpha < 0) alpha = 0;
-    }
-
-    a_DrawFilledRect(
-      (aRectf_t){p->x, p->y, BLOOD_PARTICLE_SIZE, BLOOD_PARTICLE_SIZE},
-      (aColor_t){139, 0, 0, alpha}
-    );
-  }
-}
-
-// ============================================================================
 // Hit and Knockback
 // ============================================================================
 
@@ -443,21 +384,26 @@ void enemy_hit(int enemy_index, float bullet_vx, float bullet_vy)
     e->vx = bullet_vx;
     e->vy = bullet_vy;
 
-    if (die_loaded) {
-      aAudioOptions_t opts = {
-        .channel = AUDIO_CHANNEL_ENEMY, .volume = 96,
-        .loops = 0, .fade_ms = 0, .interrupt = 0
-      };
-      a_AudioPlaySound(&die_sound, &opts);
-    }
+    game_audio_play_die();
   } else {
-    if (hit_sounds_loaded) {
-      aAudioOptions_t opts = {
-        .channel = AUDIO_CHANNEL_ENEMY, .volume = 64,
-        .loops = 0, .fade_ms = 0, .interrupt = 0
-      };
-      a_AudioPlaySound(&hit_sounds[rand() % 5], &opts);
+    game_audio_play_hit();
+  }
+
+  // Brutes are unstoppable — no knockback
+  // Shield buff absorbs hits
+  if (e->type == ENEMY_TYPE_BRUTE && !killed) {
+    if (e->brute_buff.active && e->brute_buff_type == PICKUP_SHIELD && e->brute_buff.shield_hits > 0) {
+      e->hit_count--; // Undo the hit_count increment
+      e->brute_buff.shield_hits--;
+      if (e->brute_buff.shield_hits <= 0) {
+        e->brute_buff.active = 0;
+      }
+      return; // Shield absorbed, no knockback
     }
+
+    // Re-evaluate priorities on every hit (interrupt current action)
+    brute_evaluate_priorities(e);
+    return;  // No knockback for brutes
   }
 
   start_knockback(e, bullet_vx, bullet_vy, knockback_dist);
@@ -497,7 +443,8 @@ static void update_knockback(Enemy_t* e, float dt)
     if (e->hit_count >= get_total_hp(e)) {
       e->state = ENEMY_STATE_CORPSE;
       e->death_timer = 0.0f;
-      spawn_blood_splatter(e->x, e->y, e->vx, e->vy, get_stats(e)->radius);
+      e->brute_buff.active = 0; // Clear buff on death
+      blood_spawn(e->x, e->y, e->vx, e->vy, get_stats(e)->radius);
 
       if (!first_kill_dropped) {
         WeaponType_t pool[5];
@@ -533,6 +480,11 @@ static void update_alive(Enemy_t* e, int index, float dt,
   const EnemyStats_t* stats = get_stats(e);
   float radius = stats->radius;
   float speed = get_effective_speed(e);
+
+  // Brutes proactively scan for pickups/health even when not being hit
+  if (e->type == ENEMY_TYPE_BRUTE && brute_evaluate_priorities(e)) {
+    return;
+  }
 
   float dist = dist_between(e->x + radius, e->y + radius, player_x, player_y);
 
@@ -591,6 +543,11 @@ static void update_repositioning(Enemy_t* e, int index, float dt,
   const EnemyStats_t* stats = get_stats(e);
   float radius = stats->radius;
   float speed = get_effective_speed(e);
+
+  // Brutes proactively scan for pickups/health during repositioning too
+  if (e->type == ENEMY_TYPE_BRUTE && brute_evaluate_priorities(e)) {
+    return;
+  }
 
   e->reposition_duration -= dt;
 
@@ -743,6 +700,248 @@ static void update_retreat(Enemy_t* e, float dt)
   if (is_offscreen(e->x, e->y)) e->active = 0;
 }
 
+static void update_seeking_health(Enemy_t* e, int index, float dt,
+                                  float player_x, float player_y)
+{
+  (void)index;
+  const EnemyStats_t* stats = get_stats(e);
+  float radius = stats->radius;
+  float speed = get_effective_speed(e) * BRUTE_HEAL_SPEED_MULT;
+
+  // Re-check if the health drop still exists, update target
+  float search_r = BRUTE_HEAL_BASE_RADIUS + BRUTE_HEAL_PER_HIT_RADIUS * (float)e->hit_count;
+  if (search_r > BRUTE_HEAL_MAX_RADIUS) search_r = BRUTE_HEAL_MAX_RADIUS;
+  float hx, hy;
+  if (!drops_find_nearest_health(e->x + radius, e->y + radius, search_r, &hx, &hy)) {
+    // Health drop gone (player grabbed it or it expired), go back to normal
+    e->state = ENEMY_STATE_ALIVE;
+    e->stuck_timer = 0.0f;
+    e->last_distance_to_player = 9999.0f;
+    return;
+  }
+  e->heal_target_x = hx;
+  e->heal_target_y = hy;
+
+  // Sprint toward the health pickup
+  float dx = e->heal_target_x - (e->x + radius);
+  float dy = e->heal_target_y - (e->y + radius);
+  float dist = sqrtf(dx * dx + dy * dy);
+
+  if (dist < BRUTE_HEAL_PICKUP_DIST) {
+    // Consume the drop and heal
+    drops_consume_nearest_health(e->x + radius, e->y + radius, BRUTE_HEAL_PICKUP_DIST + 10.0f);
+    e->hit_count -= BRUTE_HEAL_AMOUNT;
+    if (e->hit_count < 0) e->hit_count = 0;
+
+    // Back to normal behavior
+    e->state = ENEMY_STATE_ALIVE;
+    e->stuck_timer = 0.0f;
+    e->last_distance_to_player = 9999.0f;
+    return;
+  }
+
+  // Move toward pickup (ignore separation — sprint through enemies)
+  if (dist > 0.1f) {
+    e->vx = (dx / dist) * speed;
+    e->vy = (dy / dist) * speed;
+  }
+  e->x += e->vx * dt;
+  e->y += e->vy * dt;
+
+  // Still damage the player if we run into them on the way
+  resolve_player_collision(e, player_x, player_y);
+}
+
+// Brute priority AI: evaluate what a brute should be doing based on damage level
+// Returns 1 if the brute changed state (should skip normal behavior), 0 otherwise
+static int brute_evaluate_priorities(Enemy_t* e)
+{
+  if (e->type != ENEMY_TYPE_BRUTE) return 0;
+  if (e->state == ENEMY_STATE_CORPSE || e->state == ENEMY_STATE_HIT_KNOCKBACK) return 0;
+
+  float radius = get_stats(e)->radius;
+  float cx = e->x + radius;
+  float cy = e->y + radius;
+  int total_hp = get_total_hp(e);
+  float damage_pct = (total_hp > 0) ? (float)e->hit_count / (float)total_hp : 0.0f;
+  if (damage_pct > 1.0f) damage_pct = 1.0f;
+
+  float health_search_r = 0.0f;
+  float power_search_r = 0.0f;
+  int prefer_health = 0;
+
+  if (damage_pct > 0.75f) {
+    // CRITICAL: desperate for health, will cross the map
+    health_search_r = 300.0f;
+    power_search_r = 200.0f;
+    prefer_health = 1;
+  } else if (damage_pct > 0.40f) {
+    // HURT: opportunistic healing, also check for power
+    health_search_r = 150.0f;
+    power_search_r = 180.0f;
+    prefer_health = 1;
+  } else {
+    // HEALTHY: hunt power pickups to become more dangerous
+    health_search_r = 0.0f;
+    power_search_r = 120.0f + 20.0f * (float)e->hit_count;
+    prefer_health = 0;
+  }
+
+  float hx, hy;
+  int found_health = 0;
+  if (health_search_r > 0.0f && e->state != ENEMY_STATE_SEEKING_HEALTH) {
+    found_health = drops_find_nearest_health(cx, cy, health_search_r, &hx, &hy);
+  }
+
+  PickupType_t ptype;
+  float px, py;
+  int found_power = 0;
+  if (power_search_r > 0.0f && e->state != ENEMY_STATE_SEEKING_PICKUP) {
+    found_power = pickups_find_nearest(cx, cy, power_search_r, &ptype, &px, &py);
+  }
+
+  // Decide based on priority
+  if (prefer_health && found_health) {
+    if ((e->state == ENEMY_STATE_ATTACKING || e->state == ENEMY_STATE_WINDUP) && current_attackers > 0) {
+      current_attackers--;
+    }
+    e->state = ENEMY_STATE_SEEKING_HEALTH;
+    e->heal_target_x = hx;
+    e->heal_target_y = hy;
+    return 1;
+  }
+
+  if (found_power) {
+    if ((e->state == ENEMY_STATE_ATTACKING || e->state == ENEMY_STATE_WINDUP) && current_attackers > 0) {
+      current_attackers--;
+    }
+    e->state = ENEMY_STATE_SEEKING_PICKUP;
+    e->pickup_target_x = px;
+    e->pickup_target_y = py;
+    return 1;
+  }
+
+  if (!prefer_health && found_health) {
+    if ((e->state == ENEMY_STATE_ATTACKING || e->state == ENEMY_STATE_WINDUP) && current_attackers > 0) {
+      current_attackers--;
+    }
+    e->state = ENEMY_STATE_SEEKING_HEALTH;
+    e->heal_target_x = hx;
+    e->heal_target_y = hy;
+    return 1;
+  }
+
+  return 0;
+}
+
+static void update_seeking_pickup(Enemy_t* e, int index, float dt,
+                                  float player_x, float player_y)
+{
+  (void)index;
+  const EnemyStats_t* stats = get_stats(e);
+  float radius = stats->radius;
+  float speed = get_effective_speed(e) * BRUTE_HEAL_SPEED_MULT; // Sprint speed
+
+  float cx = e->x + radius;
+  float cy = e->y + radius;
+
+  // Re-check if pickup still exists
+  PickupType_t ptype;
+  float px, py;
+  float search_r = 120.0f + 20.0f * (float)e->hit_count;
+  if (search_r > BRUTE_HEAL_MAX_RADIUS) search_r = BRUTE_HEAL_MAX_RADIUS;
+
+  if (!pickups_find_nearest(cx, cy, search_r + 50.0f, &ptype, &px, &py)) {
+    // Pickup gone, go back to normal
+    e->state = ENEMY_STATE_ALIVE;
+    e->stuck_timer = 0.0f;
+    e->last_distance_to_player = 9999.0f;
+    return;
+  }
+  e->pickup_target_x = px;
+  e->pickup_target_y = py;
+
+  float dx = e->pickup_target_x - cx;
+  float dy = e->pickup_target_y - cy;
+  float dist = sqrtf(dx * dx + dy * dy);
+
+  if (dist < BRUTE_HEAL_PICKUP_DIST) {
+    // Consume the pickup and apply buff
+    int consumed = pickups_consume_nearest(cx, cy, BRUTE_HEAL_PICKUP_DIST + 10.0f);
+    if (consumed >= 0) {
+      PickupType_t type = (PickupType_t)consumed;
+      e->brute_buff_type = type;
+      e->brute_buff.active = 1;
+      e->fire_cone_tick_timer = 0.0f;
+
+      switch (type) {
+        case PICKUP_FIRE_CONE:
+          e->brute_buff.duration = BRUTE_FIRE_DURATION;
+          break;
+        case PICKUP_SPEED:
+          e->brute_buff.duration = BRUTE_SPEED_DURATION;
+          break;
+        case PICKUP_SHIELD:
+          e->brute_buff.duration = BRUTE_SHIELD_DURATION;
+          e->brute_buff.shield_hits += BRUTE_SHIELD_HITS;
+          break;
+        default: break;
+      }
+    }
+
+    e->state = ENEMY_STATE_ALIVE;
+    e->stuck_timer = 0.0f;
+    e->last_distance_to_player = 9999.0f;
+    return;
+  }
+
+  // Sprint toward pickup
+  if (dist > 0.1f) {
+    e->vx = (dx / dist) * speed;
+    e->vy = (dy / dist) * speed;
+  }
+  e->x += e->vx * dt;
+  e->y += e->vy * dt;
+
+  resolve_player_collision(e, player_x, player_y);
+}
+
+// Update brute buff ticking (fire cone damage, duration countdown)
+static void update_brute_buff(Enemy_t* e, float dt, float player_x, float player_y)
+{
+  if (!e->brute_buff.active) return;
+
+  // Shield has no time limit — only expires when all hits consumed
+  if (e->brute_buff_type != PICKUP_SHIELD) {
+    e->brute_buff.duration -= dt;
+    if (e->brute_buff.duration <= 0.0f) {
+      e->brute_buff.active = 0;
+      return;
+    }
+  }
+
+  // Fire cone: aim at player and tick damage
+  if (e->brute_buff_type == PICKUP_FIRE_CONE) {
+    e->fire_cone_tick_timer += dt;
+    if (e->fire_cone_tick_timer >= BRUTE_FIRE_CONE_TICK_RATE) {
+      e->fire_cone_tick_timer -= BRUTE_FIRE_CONE_TICK_RATE;
+
+      float radius = get_stats(e)->radius;
+      float cx = e->x + radius;
+      float cy = e->y + radius;
+
+      float dx = player_x - cx;
+      float dy = player_y - cy;
+      float dist = sqrtf(dx * dx + dy * dy);
+
+      if (dist > 0.1f && dist <= BRUTE_FIRE_CONE_RANGE) {
+        // The cone is aimed from brute toward player — always hits if in range
+        player_take_damage(BRUTE_FIRE_CONE_DAMAGE);
+      }
+    }
+  }
+}
+
 static void update_corpse(Enemy_t* e, float dt)
 {
   e->death_timer += dt;
@@ -758,7 +957,7 @@ static void update_corpse(Enemy_t* e, float dt)
 void enemy_update(float dt, float player_x, float player_y,
                   float player_vx, float player_vy)
 {
-  update_blood_particles(dt);
+  blood_update(dt);
 
   for (int i = 0; i < max_enemies; i++) {
     if (!enemies[i].active) continue;
@@ -771,8 +970,15 @@ void enemy_update(float dt, float player_x, float player_y,
       case ENEMY_STATE_REPOSITIONING: update_repositioning(e, i, dt, player_x, player_y);       break;
       case ENEMY_STATE_WINDUP:        update_windup(e, dt, player_x, player_y, player_vx, player_vy); break;
       case ENEMY_STATE_ATTACKING:     update_attacking(e, i, dt, player_x, player_y);           break;
-      case ENEMY_STATE_RETREAT:       update_retreat(e, dt);                                     break;
+      case ENEMY_STATE_RETREAT:        update_retreat(e, dt);                                      break;
+      case ENEMY_STATE_SEEKING_HEALTH: update_seeking_health(e, i, dt, player_x, player_y);      break;
+      case ENEMY_STATE_SEEKING_PICKUP: update_seeking_pickup(e, i, dt, player_x, player_y);     break;
       case ENEMY_STATE_CORPSE:        update_corpse(e, dt);                                      break;
+    }
+
+    // Tick brute buff effects (fire cone damage, duration countdown)
+    if (e->type == ENEMY_TYPE_BRUTE && e->state != ENEMY_STATE_CORPSE) {
+      update_brute_buff(e, dt, player_x, player_y);
     }
   }
 }
@@ -783,7 +989,7 @@ void enemy_update(float dt, float player_x, float player_y,
 
 void enemy_draw(void)
 {
-  draw_blood_particles();
+  blood_draw();
 
   for (int i = 0; i < max_enemies; i++) {
     if (!enemies[i].active) continue;
@@ -808,8 +1014,8 @@ void enemy_draw(void)
 
     // Corpses fade out in their final 2 seconds
     int alpha = 255;
-    if (e->state == ENEMY_STATE_CORPSE && e->death_timer > BLOOD_FADE_START) {
-      float fade = (e->death_timer - BLOOD_FADE_START) / (CORPSE_LIFETIME - BLOOD_FADE_START);
+    if (e->state == ENEMY_STATE_CORPSE && e->death_timer > CORPSE_FADE_START) {
+      float fade = (e->death_timer - CORPSE_FADE_START) / (CORPSE_LIFETIME - CORPSE_FADE_START);
       alpha = (int)(255 * (1.0f - fade));
       if (alpha < 0) alpha = 0;
     }
@@ -851,6 +1057,27 @@ void enemy_draw(void)
         (aRectf_t){e->x, e->y, stats->size, stats->size},
         color
       );
+
+      // Brute devil horns
+      if (e->type == ENEMY_TYPE_BRUTE) {
+        float sz = stats->size;
+        int horn_h = (int)(sz * 0.4f);
+        int horn_w = (int)(sz * 0.25f);
+        // Left horn
+        a_DrawFilledTriangle(
+          (int)(e->x + sz * 0.2f), (int)e->y,                    // base inner
+          (int)(e->x - horn_w * 0.3f), (int)(e->y - horn_h),     // tip (outward)
+          (int)(e->x), (int)e->y,                                 // base outer
+          color
+        );
+        // Right horn
+        a_DrawFilledTriangle(
+          (int)(e->x + sz * 0.8f), (int)e->y,                    // base inner
+          (int)(e->x + sz + horn_w * 0.3f), (int)(e->y - horn_h),// tip (outward)
+          (int)(e->x + sz), (int)e->y,                            // base outer
+          color
+        );
+      }
     }
 
     // Dasher windup: draw red indicator line showing dash trajectory
@@ -876,6 +1103,8 @@ void enemy_draw(void)
       case ENEMY_STATE_ATTACKING:      label = "C"; break;
       case ENEMY_STATE_REPOSITIONING:  label = "F"; break;
       case ENEMY_STATE_RETREAT:        label = "R"; break;
+      case ENEMY_STATE_SEEKING_HEALTH: label = "H"; break;
+      case ENEMY_STATE_SEEKING_PICKUP: label = "P"; break;
       case ENEMY_STATE_HIT_KNOCKBACK:  label = "!"; break;
       default: break;
     }
@@ -895,6 +1124,87 @@ void enemy_draw(void)
       a_DrawText(label, lx, ly - 1, style);
       a_DrawText(label, lx, ly + 1, style);
       a_DrawText(label, lx, ly, style);
+    }
+
+    // Brute buff visuals
+    if (e->type == ENEMY_TYPE_BRUTE && e->brute_buff.active && e->state != ENEMY_STATE_CORPSE) {
+      float sz = stats->size;
+
+      if (e->brute_buff_type == PICKUP_FIRE_CONE) {
+        // Orange cone from brute toward player
+        float bcx = e->x + sz / 2.0f;
+        float bcy = e->y + sz / 2.0f;
+        float px = player_get_x();
+        float py = player_get_y();
+        float fdx = px - bcx;
+        float fdy = py - bcy;
+        float fdist = sqrtf(fdx * fdx + fdy * fdy);
+        if (fdist > 0.1f) {
+          fdx /= fdist; fdy /= fdist;
+          float cos_a = cosf(BRUTE_FIRE_CONE_HALF_ANGLE);
+          float sin_a = sinf(BRUTE_FIRE_CONE_HALF_ANGLE);
+          float l1x = fdx * cos_a - fdy * sin_a;
+          float l1y = fdx * sin_a + fdy * cos_a;
+          float l2x = fdx * cos_a + fdy * sin_a;
+          float l2y = -fdx * sin_a + fdy * cos_a;
+          float pulse = 60.0f + 40.0f * sinf(e->brute_buff.duration * 8.0f);
+          a_DrawFilledTriangle(
+            (int)bcx, (int)bcy,
+            (int)(bcx + l1x * BRUTE_FIRE_CONE_RANGE), (int)(bcy + l1y * BRUTE_FIRE_CONE_RANGE),
+            (int)(bcx + l2x * BRUTE_FIRE_CONE_RANGE), (int)(bcy + l2y * BRUTE_FIRE_CONE_RANGE),
+            (aColor_t){255, 130, 30, (uint8_t)pulse}
+          );
+        }
+      } else if (e->brute_buff_type == PICKUP_SPEED) {
+        // Yellow glow around brute
+        float pulse = 30.0f + 20.0f * sinf(e->brute_buff.duration * 10.0f);
+        a_DrawFilledRect(
+          (aRectf_t){e->x - 3, e->y - 3, sz + 6, sz + 6},
+          (aColor_t){255, 230, 50, (uint8_t)pulse}
+        );
+      } else if (e->brute_buff_type == PICKUP_SHIELD) {
+        int hits = e->brute_buff.shield_hits;
+        // Brighter with more shields (cap visual at 220)
+        float pulse = 100.0f + 60.0f * sinf(e->death_timer * 6.0f + e->x);
+        int sa = (int)pulse;
+        if (hits > 3) sa = (int)(pulse * 1.4f);
+        if (sa > 220) sa = 220;
+        a_DrawRect(
+          (aRectf_t){e->x - 2, e->y - 2, sz + 4, sz + 4},
+          (aColor_t){50, 150, 255, (uint8_t)sa}
+        );
+        a_DrawRect(
+          (aRectf_t){e->x - 3, e->y - 3, sz + 6, sz + 6},
+          (aColor_t){50, 150, 255, (uint8_t)(sa / 2)}
+        );
+
+        // Dynamic shield charge pips below brute
+        int pip_sz = 4;
+        int pip_gap = 2;
+        int max_pips = hits > 12 ? 12 : hits; // cap visual at 12 pips
+        int total_w = max_pips * pip_sz + (max_pips - 1) * pip_gap;
+        int pip_start_x = (int)(e->x + sz / 2.0f) - total_w / 2;
+        int pip_y = (int)(e->y + sz + 3);
+        for (int p = 0; p < max_pips; p++) {
+          int px = pip_start_x + p * (pip_sz + pip_gap);
+          a_DrawFilledRect(
+            (aRectf_t){(float)px, (float)pip_y, (float)pip_sz, (float)pip_sz},
+            (aColor_t){50, 180, 255, 220}
+          );
+        }
+        // If more than 12, show "+N" text
+        if (hits > 12) {
+          char extra[8];
+          snprintf(extra, sizeof(extra), "+%d", hits - 12);
+          aTextStyle_t extra_style = {
+            .type = FONT_ENTER_COMMAND,
+            .fg = {50, 180, 255, 200},
+            .align = TEXT_ALIGN_LEFT,
+            .scale = 0.25f
+          };
+          a_DrawText(extra, pip_start_x + total_w + 3, pip_y - 1, extra_style);
+        }
+      }
     }
   }
 }
@@ -958,6 +1268,23 @@ float enemy_get_radius(int enemy_index)
 {
   if (enemy_index < 0 || enemy_index >= max_enemies) return 8.0f;
   return get_stats(&enemies[enemy_index])->radius;
+}
+
+void enemy_get_velocity(int enemy_index, float* out_vx, float* out_vy)
+{
+  if (enemy_index >= 0 && enemy_index < max_enemies && enemies[enemy_index].active) {
+    *out_vx = enemies[enemy_index].vx;
+    *out_vy = enemies[enemy_index].vy;
+  } else {
+    *out_vx = 0.0f;
+    *out_vy = 0.0f;
+  }
+}
+
+EnemyType_t enemy_get_type(int enemy_index)
+{
+  if (enemy_index < 0 || enemy_index >= max_enemies) return ENEMY_TYPE_GRUNT;
+  return enemies[enemy_index].type;
 }
 
 int enemy_find_cluster_target(float radius, float player_x, float player_y)

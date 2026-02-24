@@ -2,6 +2,7 @@
 #define ENEMY_H
 
 #include "../include/Archimedes.h"
+#include "pickups.h"
 
 // Enemy types
 typedef enum {
@@ -33,6 +34,8 @@ typedef enum {
   ENEMY_STATE_WINDUP,         // Dasher telegraph: pull back + red indicator
   ENEMY_STATE_ATTACKING,      // Speed boost charge after repositioning
   ENEMY_STATE_RETREAT,        // Moving back to flanking position after hitting player
+  ENEMY_STATE_SEEKING_HEALTH, // Brute sprinting to steal a health pickup
+  ENEMY_STATE_SEEKING_PICKUP, // Brute sprinting to steal a power pickup
   ENEMY_STATE_HIT_KNOCKBACK,
   ENEMY_STATE_CORPSE
 } EnemyState_t;
@@ -61,6 +64,17 @@ typedef struct {
   float windup_timer;           // Countdown during WINDUP state
   float dash_dir_x, dash_dir_y; // Locked dash direction after windup
 
+  // Brute health-seeking
+  float heal_target_x, heal_target_y; // Health pickup position to sprint toward
+
+  // Brute pickup-seeking
+  float pickup_target_x, pickup_target_y;
+
+  // Brute buff (one active at a time)
+  Buff_t brute_buff;
+  PickupType_t brute_buff_type;
+  float fire_cone_tick_timer;
+
   // State
   EnemyState_t state;
   EnemyType_t type;
@@ -73,15 +87,6 @@ typedef struct {
   float speed_mult;
   int bonus_hp;
 } Enemy_t;
-
-// Blood particle structure
-typedef struct {
-  float x, y;                   // Position
-  float vx, vy;                 // Velocity
-  float lifetime;               // Time alive
-  int active;                   // Is particle alive?
-  int frozen;                   // Physics frozen after spill animation
-} BloodParticle_t;
 
 void enemy_init(int max_enemies, int max_blood_particles);
 void enemy_cleanup(void);
@@ -101,6 +106,8 @@ int enemy_get_count(void);
 int enemy_get_max_count(void);
 int enemy_is_alive(int enemy_index);
 float enemy_get_radius(int enemy_index);
+void enemy_get_velocity(int enemy_index, float* out_vx, float* out_vy);
+EnemyType_t enemy_get_type(int enemy_index);
 
 int enemy_find_cluster_target(float radius, float player_x, float player_y);
 int enemy_find_cluster_position(float radius, float player_x, float player_y,

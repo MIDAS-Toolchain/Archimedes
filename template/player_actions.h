@@ -8,6 +8,7 @@
 #define PLAYER_ACTIONS_H
 
 #include "Archimedes.h"
+#include "pickups.h"
 
 /**
  * @brief Initialize player state
@@ -74,12 +75,17 @@ float player_get_vx(void);
 float player_get_vy(void);
 
 void player_fire_at_nearest(void);
+void player_fire_fan_at_nearest(int count);
+int player_bullet_on_hit(int bullet_index, int enemy_index);
+int player_check_bullet_collision_ex(float enemy_x, float enemy_y, float enemy_radius, int enemy_index);
 void player_do_spin_attack(float radius);
 
 // Dash
 void player_dash(void);
 float player_get_dash_cooldown_progress(void);
 int player_is_dashing(void);
+float player_get_dash_failed_timer(void);
+float player_get_dash_cooldown_remaining(void);
 
 int player_take_damage(int amount);
 void player_heal(int amount);
@@ -89,5 +95,17 @@ int player_get_max_hp(void);
 int player_is_alive(void);
 int player_is_invincible(void);
 float player_get_heal_flash_progress(void);
+
+// Buff system
+void player_apply_buff(PickupType_t type);
+void player_update_buffs(float dt);
+void player_draw_buffs(void);
+int player_has_shield(void);
+int player_get_shield_hits(void);
+int player_shield_absorb(void);
+float player_get_speed_multiplier(void);
+float player_get_facing_x(void);
+float player_get_facing_y(void);
+void player_increase_max_hp(int amount);
 
 #endif /* PLAYER_ACTIONS_H */
