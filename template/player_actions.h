@@ -78,7 +78,7 @@ void player_fire_at_nearest(void);
 void player_fire_fan_at_nearest(int count);
 int player_bullet_on_hit(int bullet_index, int enemy_index);
 int player_check_bullet_collision_ex(float enemy_x, float enemy_y, float enemy_radius, int enemy_index);
-void player_do_spin_attack(float radius);
+void player_do_spin_attack(float radius, int knockback);
 
 // Dash
 void player_dash(void);

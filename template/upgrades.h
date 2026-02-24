@@ -56,4 +56,7 @@ void upgrades_apply(UpgradeId_t id);
 int  upgrades_roll_cards(UpgradeId_t out_cards[3]);
 const UpgradeInfo_t* upgrades_get_info(UpgradeId_t id);
 
+// Get all upgrade IDs for a weapon type. Returns count, fills out_ids (max UPG_COUNT).
+int upgrades_get_for_weapon(int weapon_type, UpgradeId_t* out_ids, int max_out);
+
 #endif /* UPGRADES_H */

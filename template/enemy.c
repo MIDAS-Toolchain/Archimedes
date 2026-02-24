@@ -57,7 +57,7 @@
 #define BRUTE_FIRE_CONE_DAMAGE    10
 #define BRUTE_FIRE_DURATION       4.0f
 #define BRUTE_SPEED_DURATION      3.0f
-#define BRUTE_SPEED_MULT          1.5f
+#define BRUTE_SPEED_MULT          2.5f
 #define BRUTE_SHIELD_DURATION     5.0f
 #define BRUTE_SHIELD_HITS         3
 
@@ -459,7 +459,7 @@ static void update_knockback(Enemy_t* e, float dt)
         }
         first_kill_dropped = 1;
       }
-    } else if (e->aggro && !player_is_invincible()) {
+    } else if (e->aggro && (e->type == ENEMY_TYPE_DASHER || !player_is_invincible())) {
       enter_attacking(e);
     } else {
       e->state = ENEMY_STATE_ALIVE;
@@ -486,7 +486,49 @@ static void update_alive(Enemy_t* e, int index, float dt,
     return;
   }
 
-  float dist = dist_between(e->x + radius, e->y + radius, player_x, player_y);
+  float cx = e->x + radius;
+  float cy = e->y + radius;
+  float dist = dist_between(cx, cy, player_x, player_y);
+
+  // Brute with fire cone: orbit at fire range instead of charging in
+  if (e->type == ENEMY_TYPE_BRUTE && e->brute_buff.active && e->brute_buff_type == PICKUP_FIRE_CONE) {
+    float ideal_dist = BRUTE_FIRE_CONE_RANGE * 0.75f;
+    float tolerance = 15.0f;
+
+    // Direction from player to brute
+    float dx = cx - player_x;
+    float dy = cy - player_y;
+    if (dist < 0.1f) { dx = 1.0f; dy = 0.0f; dist = 1.0f; }
+    float ndx = dx / dist;
+    float ndy = dy / dist;
+
+    // Strafe perpendicular to maintain orbit
+    float perp_x = -ndy;
+    float perp_y = ndx;
+
+    float target_x, target_y;
+    if (dist < ideal_dist - tolerance) {
+      // Too close: back away + strafe
+      target_x = cx + ndx * 40.0f + perp_x * 30.0f;
+      target_y = cy + ndy * 40.0f + perp_y * 30.0f;
+    } else if (dist > ideal_dist + tolerance) {
+      // Too far: close in + strafe
+      target_x = player_x + ndx * ideal_dist + perp_x * 30.0f;
+      target_y = player_y + ndy * ideal_dist + perp_y * 30.0f;
+    } else {
+      // In range: strafe around player to keep in cone
+      target_x = cx + perp_x * 50.0f;
+      target_y = cy + perp_y * 50.0f;
+    }
+
+    float fire_speed = speed * 1.3f; // Slightly faster while fire-breathing
+    float sep_x, sep_y;
+    calc_separation(index, &sep_x, &sep_y, 0.5f);
+    move_toward(e, target_x, target_y, fire_speed, sep_x, sep_y, SEPARATION_WEIGHT * 0.5f, dt);
+    resolve_player_collision(e, player_x, player_y);
+    if (is_offscreen(e->x, e->y)) e->active = 0;
+    return;
+  }
 
   // Stuck detection: if not making progress toward player, try repositioning
   if (dist < e->last_distance_to_player - 1.0f) {
@@ -626,7 +668,8 @@ static void update_attacking(Enemy_t* e, int index, float dt,
 
   e->attack_duration -= dt;
 
-  if (player_is_invincible()) {
+  // Grunts/brutes back off when player is invincible, but dashers commit to their charge
+  if (e->type != ENEMY_TYPE_DASHER && player_is_invincible()) {
     enter_reposition(e);
     return;
   }
@@ -680,6 +723,8 @@ static void update_attacking(Enemy_t* e, int index, float dt,
 static void update_retreat(Enemy_t* e, float dt)
 {
   float speed = get_effective_speed(e) * RETREAT_SPEED_MULT;
+  // Cap brute retreat speed so buffs don't send them across the map
+  if (e->type == ENEMY_TYPE_BRUTE && speed > 150.0f) speed = 150.0f;
 
   float dist = dist_between(e->x, e->y, e->flank_x, e->flank_y);
 

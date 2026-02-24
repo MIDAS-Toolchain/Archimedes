@@ -141,7 +141,8 @@ void player_init(void)
 {
   player_x = 100.0f;
   player_y = 100.0f;
-  player_hp = 100;
+  player_max_hp = 100;
+  player_hp = player_max_hp;
   invincibility_timer = 0.0f;
   screen_flash_timer = 0.0f;
   heal_flash_timer = 0.0f;
@@ -653,7 +654,7 @@ int player_bullet_on_hit(int bullet_index, int enemy_index)
   return 1; // Bullet destroyed
 }
 
-void player_do_spin_attack(float radius)
+void player_do_spin_attack(float radius, int knockback)
 {
   float cx = player_x + 16;
   float cy = player_y + 16;
@@ -673,10 +674,13 @@ void player_do_spin_attack(float radius)
     float dist = sqrtf(dx * dx + dy * dy);
 
     if (dist < radius) {
-      // Hit with knockback direction away from player
-      float knockback_vx = (dist > 0.1f) ? (dx / dist) * 300.0f : 300.0f;
-      float knockback_vy = (dist > 0.1f) ? (dy / dist) * 300.0f : 0.0f;
-      enemy_hit(i, knockback_vx, knockback_vy);
+      if (knockback) {
+        float knockback_vx = (dist > 0.1f) ? (dx / dist) * 300.0f : 300.0f;
+        float knockback_vy = (dist > 0.1f) ? (dy / dist) * 300.0f : 0.0f;
+        enemy_hit(i, knockback_vx, knockback_vy);
+      } else {
+        enemy_hit(i, 0.0f, 0.0f);
+      }
     }
   }
 }

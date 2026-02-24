@@ -6,6 +6,7 @@
 #include "player_actions.h"
 #include "enemy.h"
 #include "xp.h"
+#include "stats.h"
 
 #define MAX_ENEMIES 50
 
@@ -25,6 +26,28 @@ void hud_draw_game(float time_remaining)
     .scale = 0.8f
   };
   a_DrawText( timer_text, SCREEN_WIDTH / 2, 25, timer_config );
+
+  // Draw score (top left)
+  {
+    char score_text[32];
+    snprintf( score_text, sizeof(score_text), "%d", stats_get_score() );
+    aTextStyle_t score_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = {255, 255, 255, 255},
+      .align = TEXT_ALIGN_LEFT,
+      .scale = 0.6f
+    };
+    a_DrawText( score_text, 16, 10, score_style );
+
+    // "SCORE" label below
+    aTextStyle_t score_label = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = {160, 160, 180, 180},
+      .align = TEXT_ALIGN_LEFT,
+      .scale = 0.3f
+    };
+    a_DrawText( "SCORE", 16, 30, score_label );
+  }
 
   // Draw enemy count and spawn timer (top right)
   int current_enemy_count = enemy_get_count();

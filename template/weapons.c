@@ -4,6 +4,7 @@
 #include "upgrades.h"
 #include "player_actions.h"
 #include "enemy.h"
+#include "fire_particles.h"
 
 // ============================================================================
 // Weapon Definitions
@@ -172,6 +173,10 @@ static void linger_update(float dt)
 
         if (dist < linger_zones[i].radius + er) {
           enemy_hit(e, 0.0f, 0.0f);
+          // Fire particles on linger damage — direction outward from zone center
+          float pdx = (dist > 1.0f) ? dx / dist : 0.0f;
+          float pdy = (dist > 1.0f) ? dy / dist : 1.0f;
+          fire_particles_spawn(ecx, ecy, pdx, pdy);
         }
       }
     }
@@ -353,7 +358,13 @@ static void fire_wand(void)
 static void fire_spin(void)
 {
   float radius = get_spin_radius();
-  player_do_spin_attack(radius);
+
+  // Schedule extra pulses from double-pulse upgrade
+  int pulse_tier = upgrades_get_tier(UPG_SPIN_DOUBLE_PULSE);
+  int has_extra_pulses = (pulse_tier > 0);
+
+  // First pulse: no knockback if extra pulses follow (so they can hit too)
+  player_do_spin_attack(radius, !has_extra_pulses);
   spin_visual_timer = SPIN_VISUAL_DURATION;
 
   // Spin linger zone (rare upgrade)
@@ -364,9 +375,7 @@ static void fire_spin(void)
                  spin_linger_dur[spin_linger_tier], (aColor_t){255, 200, 50, 200});
   }
 
-  // Schedule extra pulses from double-pulse upgrade
-  int pulse_tier = upgrades_get_tier(UPG_SPIN_DOUBLE_PULSE);
-  if (pulse_tier > 0) {
+  if (has_extra_pulses) {
     spin_extra_pulses = pulse_tier; // 1/2/3 extra pulses
     spin_pulse_timer = 0.1f;
   }
@@ -809,9 +818,10 @@ void weapons_update(float dt)
     spin_pulse_timer -= dt;
     if (spin_pulse_timer <= 0.0f) {
       float radius = get_spin_radius();
-      player_do_spin_attack(radius);
-      spin_visual_timer = SPIN_VISUAL_DURATION;
       spin_extra_pulses--;
+      // Only knockback on the final pulse
+      player_do_spin_attack(radius, spin_extra_pulses == 0);
+      spin_visual_timer = SPIN_VISUAL_DURATION;
       if (spin_extra_pulses > 0) {
         spin_pulse_timer = 0.1f;
       }

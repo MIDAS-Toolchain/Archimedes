@@ -209,13 +209,22 @@ void director_update(float dt)
   // Timed weapon drops
   check_timed_weapon_drops();
 
-  // Health drops
+  // Health drops (skip at weapon drop times: 20s, 40s, 60s)
   health_drop_timer += dt;
   if (health_drop_timer >= HEALTH_DROP_INTERVAL) {
     health_drop_timer = 0.0f;
-    float hx = RANDF(40, SCREEN_WIDTH - 40);
-    float hy = RANDF(40, SCREEN_HEIGHT - 40);
-    drops_spawn(hx, hy, DROP_HEALTH);
+
+    int skip = 0;
+    for (int i = 0; i < TIMED_DROP_COUNT; i++) {
+      float diff = game_elapsed_timer - timed_drops[i].trigger_time;
+      if (diff >= 0.0f && diff < 1.0f) { skip = 1; break; }
+    }
+
+    if (!skip) {
+      float hx = RANDF(40, SCREEN_WIDTH - 40);
+      float hy = RANDF(40, SCREEN_HEIGHT - 40);
+      drops_spawn(hx, hy, DROP_HEALTH);
+    }
   }
 }
 

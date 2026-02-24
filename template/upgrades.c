@@ -146,6 +146,17 @@ const UpgradeInfo_t* upgrades_get_info(UpgradeId_t id)
   return &upgrade_table[id];
 }
 
+int upgrades_get_for_weapon(int weapon_type, UpgradeId_t* out_ids, int max_out)
+{
+  int count = 0;
+  for (int i = 0; i < UPG_COUNT && count < max_out; i++) {
+    if (upgrade_table[i].weapon_type == weapon_type) {
+      out_ids[count++] = (UpgradeId_t)i;
+    }
+  }
+  return count;
+}
+
 int upgrades_roll_cards(UpgradeId_t out_cards[3])
 {
   // Build candidate pool: owned weapons, tier < max

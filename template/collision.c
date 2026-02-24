@@ -5,6 +5,7 @@
 #include "player_actions.h"
 #include "pickups.h"
 #include "xp.h"
+#include "stats.h"
 
 static int* was_alive = NULL;
 static int max_enemies = 0;
@@ -76,6 +77,7 @@ void collision_resolve_deaths(void)
       }
 
       xp_spawn_orbs(death_x, death_y, (int)enemy_get_type(j));
+      stats_record_kill(enemy_get_type(j));
     }
   }
 }

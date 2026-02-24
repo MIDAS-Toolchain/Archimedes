@@ -4,6 +4,7 @@
 #include "xp.h"
 #include "player_actions.h"
 #include "enemy.h"
+#include "game_audio.h"
 
 #define MAX_XP_ORBS       300
 #define XP_MAGNET_RADIUS  120.0f
@@ -87,6 +88,7 @@ void xp_update(float dt)
     if (dist < XP_COLLECT_DIST) {
       orbs[i].active = 0;
       current_xp += orbs[i].value;
+      game_audio_play_coin();
 
       // Check for level-up(s)
       int needed = xp_needed_for_level(current_level);
@@ -95,6 +97,7 @@ void xp_update(float dt)
         current_level++;
         player_increase_max_hp(10);
         pending_level_up = 1;
+        game_audio_play_levelup();
         needed = xp_needed_for_level(current_level);
       }
       continue;

@@ -21,6 +21,7 @@
 #include "xp.h"
 #include "upgrades.h"
 #include "fire_particles.h"
+#include "stats.h"
 
 // Scene system
 typedef enum {
@@ -48,12 +49,20 @@ static FlexBox_t* gameover_flex = NULL;
 #define GAMEOVER_BTN_H 40
 #define GAMEOVER_BTN_IDX_RETRY 0
 #define GAMEOVER_BTN_IDX_QUIT  1
+#define GAMEOVER_BTN_COUNT     2
+static int gameover_sel = 0; // keyboard-selected button index
+
+// Frozen end-of-run stats (captured at death)
+static int   go_score = 0;
+static int   go_kills = 0;
+static int   go_level = 0;
+static float go_time  = 0.0f;
+static int   go_best_score = 0;
+static float go_best_time  = 0.0f;
+static int   go_new_best = 0;
 
 aImage_t* bullet_img;
 
-// Weather sound
-static aSoundEffect_t rain_sound;
-static int rain_loaded = 0;
 
 // Timer system (countdown from 15:00)
 static float time_remaining = 15.0f * 60.0f;
@@ -108,24 +117,6 @@ void aInitGame( void )
   director_init();
   collision_init(MAX_ENEMIES);
 
-  // Load and play rain sound on weather channel
-  if (a_AudioLoadSound("resources/music/rain_2.wav", &rain_sound) == 0) {
-    printf("Loaded rain_2.wav\n");
-    rain_loaded = 1;
-
-    // Play on weather channel, loop forever, volume 32, interrupt mode
-    aAudioOptions_t rain_opts = {
-      .channel = AUDIO_CHANNEL_WEATHER,
-      .volume = 16,           // 32 out of 128 (25% volume)
-      .loops = -1,            // Loop forever
-      .fade_ms = 0,           // No fade
-      .interrupt = 1          // Interrupt any previous weather sound
-    };
-    a_AudioPlaySound(&rain_sound, &rain_opts);
-    printf("Playing rain on channel %d at volume 32\n", AUDIO_CHANNEL_WEATHER);
-  } else {
-    printf("Failed to load rain_2.wav\n");
-  }
 
   // Initialize audio test (loads calm BGM and starts playback)
   audio_test_init();
@@ -144,6 +135,7 @@ void aInitGame( void )
   // Initialize XP and upgrades
   xp_init();
   upgrades_init();
+  stats_init();
 }
 
 static void aDoLoop( float dt )
@@ -208,24 +200,35 @@ static void scene_game_logic( float dt )
   // Check for player death — switch to game over screen
   if ( !player_is_alive() )
   {
+    // Capture run stats
+    go_score = stats_get_score();
+    go_kills = stats_get_kills();
+    go_level = xp_get_level();
+    go_time  = director_get_elapsed();
+    go_best_score = stats_get_best_score();
+    go_best_time  = stats_get_best_time();
+    go_new_best = (go_score > go_best_score || go_time > go_best_time);
+    stats_save_if_best(go_time);
+
     // Create game over UI layout
     if ( gameover_flex )
     {
       a_FlexBoxDestroy( &gameover_flex );
     }
-    int panel_w = 300;
-    int panel_h = 200;
+    int panel_w = 340;
+    int panel_h = 380;
     gameover_flex = a_FlexBoxCreate(
       (SCREEN_WIDTH - panel_w) / 2,
       (SCREEN_HEIGHT - panel_h) / 2,
       panel_w, panel_h
     );
-    a_FlexConfigure( gameover_flex, FLEX_DIR_COLUMN, FLEX_JUSTIFY_CENTER, 16 );
+    a_FlexConfigure( gameover_flex, FLEX_DIR_COLUMN, FLEX_JUSTIFY_END, 16 );
     a_FlexSetAlign( gameover_flex, FLEX_ALIGN_CENTER );
     a_FlexSetPadding( gameover_flex, 20 );
     a_FlexAddItem( gameover_flex, GAMEOVER_BTN_W, GAMEOVER_BTN_H, NULL ); // Try Again
     a_FlexAddItem( gameover_flex, GAMEOVER_BTN_W, GAMEOVER_BTN_H, NULL ); // Quit
     a_FlexLayout( gameover_flex );
+    gameover_sel = GAMEOVER_BTN_IDX_RETRY;
 
     current_scene = SCENE_GAME_OVER;
     return;
@@ -564,6 +567,110 @@ static void pause_draw( void )
                 item->calc_y + 10,
                 btn_style );
   }
+
+  // Hotbar weapon tooltip on hover
+  int hslot = hotbar_get_hovered_slot( app.mouse.x, app.mouse.y );
+  if ( hslot >= 0 )
+  {
+    const Weapon_t* w = weapons_get_slot( hslot );
+    if ( w && w->type != WEAPON_NONE )
+    {
+      // Get slot rect to position tooltip above it
+      int sx, sy, sw, sh;
+      hotbar_get_slot_rect( hslot, &sx, &sy, &sw, &sh );
+
+      // Collect upgrades for this weapon
+      UpgradeId_t upg_ids[UPG_COUNT];
+      int upg_count = upgrades_get_for_weapon( (int)w->type, upg_ids, UPG_COUNT );
+
+      // Count active upgrades for sizing
+      int active_count = 0;
+      for ( int u = 0; u < upg_count; u++ )
+      {
+        if ( upgrades_get_tier( upg_ids[u] ) > 0 ) active_count++;
+      }
+
+      // Tooltip dimensions
+      int tt_w = 180;
+      int tt_h = 46 + active_count * 16;  // name + cooldown + upgrade lines
+      int tt_x = sx + sw / 2 - tt_w / 2;
+      int tt_y = sy - tt_h - 8;
+
+      // Clamp to screen
+      if ( tt_x < 4 ) tt_x = 4;
+      if ( tt_x + tt_w > SCREEN_WIDTH - 4 ) tt_x = SCREEN_WIDTH - 4 - tt_w;
+      if ( tt_y < 4 ) tt_y = 4;
+
+      // Background
+      a_DrawFilledRect(
+        (aRectf_t){(float)tt_x, (float)tt_y, (float)tt_w, (float)tt_h},
+        (aColor_t){20, 20, 40, 230}
+      );
+      a_DrawRect(
+        (aRectf_t){(float)tt_x, (float)tt_y, (float)tt_w, (float)tt_h},
+        (aColor_t){180, 180, 220, 255}
+      );
+
+      int cx = tt_x + tt_w / 2;
+      int ty = tt_y + 6;
+
+      // Weapon name
+      aTextStyle_t tt_name = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {255, 255, 255, 255},
+        .align = TEXT_ALIGN_CENTER,
+        .scale = 0.5f
+      };
+      a_DrawText( w->label, cx, ty, tt_name );
+      ty += 14;
+
+      // Cooldown
+      char cd_text[32];
+      float cd = weapons_get_cooldown_progress( hslot );
+      snprintf( cd_text, sizeof(cd_text), "Cooldown: %.1fs", w->cooldown );
+      aTextStyle_t tt_cd = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = cd >= 1.0f ? (aColor_t){100, 255, 100, 255} : (aColor_t){255, 200, 100, 255},
+        .align = TEXT_ALIGN_CENTER,
+        .scale = 0.35f
+      };
+      a_DrawText( cd_text, cx, ty, tt_cd );
+      ty += 16;
+
+      // Upgrades
+      for ( int u = 0; u < upg_count; u++ )
+      {
+        int tier = upgrades_get_tier( upg_ids[u] );
+        if ( tier <= 0 ) continue;
+
+        const UpgradeInfo_t* info = upgrades_get_info( upg_ids[u] );
+
+        // Tier pips: filled for acquired, empty for remaining
+        char line[64];
+        const char* pips[3] = { "I", "I I", "I I I" };
+        snprintf( line, sizeof(line), "%s %s", info->upgrade_name,
+                  tier <= 3 ? pips[tier - 1] : "MAX" );
+
+        // Color by rarity
+        aColor_t upg_color;
+        switch ( info->rarity )
+        {
+          case RARITY_UNCOMMON: upg_color = (aColor_t){100, 230, 100, 255}; break;
+          case RARITY_RARE:     upg_color = (aColor_t){255, 210, 60, 255}; break;
+          default:              upg_color = (aColor_t){200, 200, 200, 255}; break;
+        }
+
+        aTextStyle_t tt_upg = {
+          .type = FONT_ENTER_COMMAND,
+          .fg = upg_color,
+          .align = TEXT_ALIGN_CENTER,
+          .scale = 0.3f
+        };
+        a_DrawText( line, cx, ty, tt_upg );
+        ty += 14;
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -849,13 +956,44 @@ static void scene_game_over_logic( float dt )
 
   if ( !gameover_flex ) return;
 
-  // Check mouse click on buttons
+  // Keyboard navigation: up/down or W/S to move selection
+  if ( app.keyboard[ SDL_SCANCODE_UP ] == 1 || app.keyboard[ SDL_SCANCODE_W ] == 1 )
+  {
+    gameover_sel = (gameover_sel - 1 + GAMEOVER_BTN_COUNT) % GAMEOVER_BTN_COUNT;
+    app.keyboard[ SDL_SCANCODE_UP ] = 0;
+    app.keyboard[ SDL_SCANCODE_W ] = 0;
+  }
+  if ( app.keyboard[ SDL_SCANCODE_DOWN ] == 1 || app.keyboard[ SDL_SCANCODE_S ] == 1 )
+  {
+    gameover_sel = (gameover_sel + 1) % GAMEOVER_BTN_COUNT;
+    app.keyboard[ SDL_SCANCODE_DOWN ] = 0;
+    app.keyboard[ SDL_SCANCODE_S ] = 0;
+  }
+
+  // Keyboard confirm: Enter or Space
+  if ( app.keyboard[ SDL_SCANCODE_RETURN ] == 1 || app.keyboard[ SDL_SCANCODE_SPACE ] == 1 )
+  {
+    app.keyboard[ SDL_SCANCODE_RETURN ] = 0;
+    app.keyboard[ SDL_SCANCODE_SPACE ] = 0;
+
+    if ( gameover_sel == GAMEOVER_BTN_IDX_RETRY )
+    {
+      game_reset();
+      return;
+    }
+    else if ( gameover_sel == GAMEOVER_BTN_IDX_QUIT )
+    {
+      app.running = 0;
+      return;
+    }
+  }
+
+  // Mouse click on buttons still works
   if ( app.mouse.pressed && app.mouse.button == SDL_BUTTON_LEFT )
   {
     int mx = app.mouse.x;
     int my = app.mouse.y;
 
-    // Try Again button
     const FlexItem_t* retry = a_FlexGetItem( gameover_flex, GAMEOVER_BTN_IDX_RETRY );
     if ( retry && point_in_rect( mx, my, retry->calc_x, retry->calc_y, retry->w, retry->h ) )
     {
@@ -864,7 +1002,6 @@ static void scene_game_over_logic( float dt )
       return;
     }
 
-    // Quit button
     const FlexItem_t* quit = a_FlexGetItem( gameover_flex, GAMEOVER_BTN_IDX_QUIT );
     if ( quit && point_in_rect( mx, my, quit->calc_x, quit->calc_y, quit->w, quit->h ) )
     {
@@ -883,25 +1020,28 @@ static void scene_game_over_draw( float dt )
 
   if ( !gameover_flex ) return;
 
-  // Dark overlay over the whole screen
+  // Dark overlay
   a_DrawFilledRect(
     (aRectf_t){0, 0, (float)SCREEN_WIDTH, (float)SCREEN_HEIGHT},
     (aColor_t){0, 0, 0, 180}
   );
 
   // Panel background
+  float panel_x = (float)gameover_flex->x;
+  float panel_y = (float)gameover_flex->y;
+  float panel_w = (float)gameover_flex->w;
+  float panel_h = (float)gameover_flex->h;
+
   a_DrawFilledRect(
-    (aRectf_t){(float)gameover_flex->x, (float)gameover_flex->y,
-               (float)gameover_flex->w, (float)gameover_flex->h},
+    (aRectf_t){panel_x, panel_y, panel_w, panel_h},
     (aColor_t){30, 30, 50, 240}
   );
   a_DrawRect(
-    (aRectf_t){(float)gameover_flex->x, (float)gameover_flex->y,
-               (float)gameover_flex->w, (float)gameover_flex->h},
+    (aRectf_t){panel_x, panel_y, panel_w, panel_h},
     (aColor_t){200, 30, 30, 255}
   );
 
-  // "GAME OVER" title above the panel
+  // "GAME OVER" title
   aTextStyle_t title_style = {
     .type = FONT_ENTER_COMMAND,
     .fg = {220, 30, 30, 255},
@@ -909,7 +1049,94 @@ static void scene_game_over_draw( float dt )
     .scale = 1.2f
   };
   a_DrawText( "GAME OVER", SCREEN_WIDTH / 2,
-              gameover_flex->y - 40, title_style );
+              (int)panel_y + 14, title_style );
+
+  // Stats section
+  aTextStyle_t label_style = {
+    .type = FONT_ENTER_COMMAND,
+    .fg = {160, 160, 180, 255},
+    .align = TEXT_ALIGN_LEFT,
+    .scale = 0.45f
+  };
+  aTextStyle_t value_style = {
+    .type = FONT_ENTER_COMMAND,
+    .fg = {255, 255, 255, 255},
+    .align = TEXT_ALIGN_RIGHT,
+    .scale = 0.45f
+  };
+
+  int left_x  = (int)panel_x + 24;
+  int right_x = (int)(panel_x + panel_w) - 24;
+  int stat_y  = (int)panel_y + 52;
+  int line_h  = 22;
+
+  char buf[64];
+
+  // Time survived
+  int mins = (int)go_time / 60;
+  int secs = (int)go_time % 60;
+  a_DrawText( "Time", left_x, stat_y, label_style );
+  snprintf( buf, sizeof(buf), "%d:%02d", mins, secs );
+  a_DrawText( buf, right_x, stat_y, value_style );
+  stat_y += line_h;
+
+  // Score
+  a_DrawText( "Score", left_x, stat_y, label_style );
+  snprintf( buf, sizeof(buf), "%d", go_score );
+  a_DrawText( buf, right_x, stat_y, value_style );
+  stat_y += line_h;
+
+  // Kills
+  a_DrawText( "Kills", left_x, stat_y, label_style );
+  snprintf( buf, sizeof(buf), "%d", go_kills );
+  a_DrawText( buf, right_x, stat_y, value_style );
+  stat_y += line_h;
+
+  // Level
+  a_DrawText( "Level", left_x, stat_y, label_style );
+  snprintf( buf, sizeof(buf), "%d", go_level );
+  a_DrawText( buf, right_x, stat_y, value_style );
+  stat_y += line_h + 6;
+
+  // Divider line
+  a_DrawFilledRect(
+    (aRectf_t){panel_x + 20, (float)stat_y, panel_w - 40, 1},
+    (aColor_t){100, 100, 120, 200}
+  );
+  stat_y += 8;
+
+  // Best score
+  aTextStyle_t best_label_style = label_style;
+  best_label_style.fg = (aColor_t){200, 180, 80, 255};
+  aTextStyle_t best_value_style = value_style;
+  best_value_style.fg = (aColor_t){255, 220, 80, 255};
+
+  int best_score_now = stats_get_best_score();
+  float best_time_now = stats_get_best_time();
+  int best_mins = (int)best_time_now / 60;
+  int best_secs = (int)best_time_now % 60;
+
+  a_DrawText( "Best Score", left_x, stat_y, best_label_style );
+  snprintf( buf, sizeof(buf), "%d", best_score_now );
+  a_DrawText( buf, right_x, stat_y, best_value_style );
+  stat_y += line_h;
+
+  a_DrawText( "Best Time", left_x, stat_y, best_label_style );
+  snprintf( buf, sizeof(buf), "%d:%02d", best_mins, best_secs );
+  a_DrawText( buf, right_x, stat_y, best_value_style );
+  stat_y += line_h;
+
+  // NEW BEST flash
+  if ( go_new_best )
+  {
+    aTextStyle_t flash_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = {255, 220, 50, 255},
+      .align = TEXT_ALIGN_CENTER,
+      .scale = 0.55f
+    };
+    a_DrawText( "NEW BEST!", SCREEN_WIDTH / 2, stat_y + 2, flash_style );
+  }
 
   // Draw buttons
   int mx = app.mouse.x;
@@ -922,9 +1149,11 @@ static void scene_game_over_draw( float dt )
     if ( !item ) continue;
 
     int hovered = point_in_rect( mx, my, item->calc_x, item->calc_y, item->w, item->h );
+    int selected = (i == gameover_sel);
+    int highlight = hovered || selected;
 
-    aColor_t btn_bg = hovered ? (aColor_t){80, 80, 120, 255} : (aColor_t){50, 50, 70, 255};
-    aColor_t btn_border = hovered ? (aColor_t){255, 255, 255, 255} : (aColor_t){150, 150, 150, 200};
+    aColor_t btn_bg = highlight ? (aColor_t){80, 80, 120, 255} : (aColor_t){50, 50, 70, 255};
+    aColor_t btn_border = highlight ? (aColor_t){255, 255, 255, 255} : (aColor_t){150, 150, 150, 200};
 
     a_DrawFilledRect(
       (aRectf_t){(float)item->calc_x, (float)item->calc_y,
@@ -939,7 +1168,7 @@ static void scene_game_over_draw( float dt )
 
     aTextStyle_t btn_style = {
       .type = FONT_ENTER_COMMAND,
-      .fg = hovered ? (aColor_t){255, 255, 255, 255} : (aColor_t){200, 200, 200, 255},
+      .fg = highlight ? (aColor_t){255, 255, 255, 255} : (aColor_t){200, 200, 200, 255},
       .align = TEXT_ALIGN_CENTER,
       .scale = 0.6f
     };
@@ -991,6 +1220,7 @@ static void game_reset( void )
   hotbar_init();
   xp_reset();
   upgrades_reset();
+  stats_reset();
   level_up_active = 0;
   game_paused = 0;
 
