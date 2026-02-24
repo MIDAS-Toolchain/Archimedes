@@ -25,15 +25,18 @@
 
 // Scene system
 typedef enum {
+  SCENE_MAIN_MENU,
   SCENE_GAME,
   SCENE_TEST_TEXT,
   SCENE_AUDIO_TEST,
   SCENE_GAME_OVER
 } Scene_t;
 
-static Scene_t current_scene = SCENE_GAME;
+static Scene_t current_scene = SCENE_MAIN_MENU;
 
 // Scene function declarations
+static void scene_main_menu_logic( float dt );
+static void scene_main_menu_draw( float dt );
 static void scene_game_logic( float dt );
 static void scene_game_draw( float dt );
 static void scene_game_over_logic( float dt );
@@ -51,6 +54,15 @@ static FlexBox_t* gameover_flex = NULL;
 #define GAMEOVER_BTN_IDX_QUIT  1
 #define GAMEOVER_BTN_COUNT     2
 static int gameover_sel = 0; // keyboard-selected button index
+
+// Main menu UI
+static FlexBox_t* mainmenu_flex = NULL;
+#define MAINMENU_BTN_W 160
+#define MAINMENU_BTN_H 40
+#define MAINMENU_BTN_IDX_PLAY 0
+#define MAINMENU_BTN_IDX_QUIT 1
+#define MAINMENU_BTN_COUNT     2
+static int mainmenu_sel = 0;
 
 // Frozen end-of-run stats (captured at death)
 static int   go_score = 0;
@@ -76,8 +88,8 @@ static int level_up_active = 0;
 static UpgradeId_t level_up_cards[3];
 static int level_up_card_count = 0;
 static int level_up_selected = 0;  // Currently highlighted card index
-#define LEVELUP_CARD_W  180
-#define LEVELUP_CARD_H  240
+#define LEVELUP_CARD_W  200
+#define LEVELUP_CARD_H  280
 #define LEVELUP_CARD_GAP 20
 
 static void level_up_logic( void );
@@ -145,6 +157,9 @@ static void aDoLoop( float dt )
   // Dispatch to current scene
   switch ( current_scene )
   {
+    case SCENE_MAIN_MENU:
+      scene_main_menu_logic( dt );
+      break;
     case SCENE_GAME:
       // ESC to toggle pause
       if ( app.keyboard[ SDL_SCANCODE_ESCAPE ] == 1 )
@@ -261,10 +276,11 @@ static void scene_game_logic( float dt )
   {
     float px = player_get_x();
     float py = player_get_y();
-    int consumed = pickups_consume_nearest( px, py, 26.0f );
+    int consumed = pickups_consume_nearest( px, py, 34.0f );
     if ( consumed >= 0 )
     {
       player_apply_buff( (PickupType_t)consumed );
+      stats_add_score(3);
     }
   }
 
@@ -285,6 +301,7 @@ static void scene_game_logic( float dt )
     {
       level_up_active = 1;
       level_up_selected = 0;
+      player_clear_screen_flashes();
     }
   }
 
@@ -337,6 +354,9 @@ static void aRenderLoop( float dt )
   // Dispatch to current scene
   switch ( current_scene )
   {
+    case SCENE_MAIN_MENU:
+      scene_main_menu_draw( dt );
+      break;
     case SCENE_GAME:
       scene_game_draw( dt );
       break;
@@ -396,6 +416,169 @@ static void scene_game_draw( float dt )
 static int point_in_rect( int px, int py, int rx, int ry, int rw, int rh )
 {
   return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
+}
+
+// ============================================================================
+// Main Menu Scene
+// ============================================================================
+
+static void mainmenu_begin( void )
+{
+  if ( mainmenu_flex )
+  {
+    a_FlexBoxDestroy( &mainmenu_flex );
+  }
+
+  int panel_w = 260;
+  int panel_h = 160;
+  mainmenu_flex = a_FlexBoxCreate(
+    (SCREEN_WIDTH - panel_w) / 2,
+    (SCREEN_HEIGHT - panel_h) / 2 + 40,
+    panel_w, panel_h
+  );
+  a_FlexConfigure( mainmenu_flex, FLEX_DIR_COLUMN, FLEX_JUSTIFY_CENTER, 14 );
+  a_FlexSetAlign( mainmenu_flex, FLEX_ALIGN_CENTER );
+  a_FlexSetPadding( mainmenu_flex, 20 );
+  a_FlexAddItem( mainmenu_flex, MAINMENU_BTN_W, MAINMENU_BTN_H, NULL );  // Play
+  a_FlexAddItem( mainmenu_flex, MAINMENU_BTN_W, MAINMENU_BTN_H, NULL );  // Quit
+  a_FlexLayout( mainmenu_flex );
+}
+
+static void scene_main_menu_logic( float dt )
+{
+  (void)dt;
+
+  if ( !mainmenu_flex )
+  {
+    mainmenu_begin();
+  }
+
+  // Arrow keys / W/S to navigate
+  if ( app.keyboard[ SDL_SCANCODE_UP ] == 1 || app.keyboard[ SDL_SCANCODE_W ] == 1 )
+  {
+    mainmenu_sel = (mainmenu_sel - 1 + MAINMENU_BTN_COUNT) % MAINMENU_BTN_COUNT;
+    app.keyboard[ SDL_SCANCODE_UP ] = 0;
+    app.keyboard[ SDL_SCANCODE_W ] = 0;
+  }
+  if ( app.keyboard[ SDL_SCANCODE_DOWN ] == 1 || app.keyboard[ SDL_SCANCODE_S ] == 1 )
+  {
+    mainmenu_sel = (mainmenu_sel + 1) % MAINMENU_BTN_COUNT;
+    app.keyboard[ SDL_SCANCODE_DOWN ] = 0;
+    app.keyboard[ SDL_SCANCODE_S ] = 0;
+  }
+
+  // Enter or Space to confirm
+  if ( app.keyboard[ SDL_SCANCODE_RETURN ] == 1 || app.keyboard[ SDL_SCANCODE_SPACE ] == 1 )
+  {
+    app.keyboard[ SDL_SCANCODE_RETURN ] = 0;
+    app.keyboard[ SDL_SCANCODE_SPACE ] = 0;
+
+    if ( mainmenu_sel == MAINMENU_BTN_IDX_PLAY )
+    {
+      if ( mainmenu_flex ) a_FlexBoxDestroy( &mainmenu_flex );
+      current_scene = SCENE_GAME;
+    }
+    else if ( mainmenu_sel == MAINMENU_BTN_IDX_QUIT )
+    {
+      app.running = 0;
+    }
+    return;
+  }
+
+  // Mouse click on buttons
+  if ( app.mouse.pressed && app.mouse.button == SDL_BUTTON_LEFT )
+  {
+    int mx = app.mouse.x;
+    int my = app.mouse.y;
+
+    const FlexItem_t* play_btn = a_FlexGetItem( mainmenu_flex, MAINMENU_BTN_IDX_PLAY );
+    if ( play_btn && point_in_rect( mx, my, play_btn->calc_x, play_btn->calc_y, play_btn->w, play_btn->h ) )
+    {
+      app.mouse.pressed = 0;
+      if ( mainmenu_flex ) a_FlexBoxDestroy( &mainmenu_flex );
+      current_scene = SCENE_GAME;
+      return;
+    }
+
+    const FlexItem_t* quit_btn = a_FlexGetItem( mainmenu_flex, MAINMENU_BTN_IDX_QUIT );
+    if ( quit_btn && point_in_rect( mx, my, quit_btn->calc_x, quit_btn->calc_y, quit_btn->w, quit_btn->h ) )
+    {
+      app.mouse.pressed = 0;
+      app.running = 0;
+      return;
+    }
+
+    app.mouse.pressed = 0;
+  }
+}
+
+static void scene_main_menu_draw( float dt )
+{
+  (void)dt;
+
+  if ( !mainmenu_flex ) return;
+
+  // Title "ARCHIMEDES" centered near the top
+  aTextStyle_t title_style = {
+    .type = FONT_ENTER_COMMAND,
+    .fg = {255, 255, 255, 255},
+    .align = TEXT_ALIGN_CENTER,
+    .scale = 1.6f
+  };
+  a_DrawText( "ARCHIMEDES", SCREEN_WIDTH / 2,
+              mainmenu_flex->y - 80, title_style );
+
+  // Panel background
+  a_DrawFilledRect(
+    (aRectf_t){(float)mainmenu_flex->x, (float)mainmenu_flex->y,
+               (float)mainmenu_flex->w, (float)mainmenu_flex->h},
+    (aColor_t){30, 30, 50, 240}
+  );
+  a_DrawRect(
+    (aRectf_t){(float)mainmenu_flex->x, (float)mainmenu_flex->y,
+               (float)mainmenu_flex->w, (float)mainmenu_flex->h},
+    (aColor_t){150, 150, 200, 255}
+  );
+
+  // Draw buttons
+  const char* labels[2] = { "PLAY", "QUIT" };
+  int mx = app.mouse.x;
+  int my = app.mouse.y;
+
+  for ( int i = 0; i < MAINMENU_BTN_COUNT; i++ )
+  {
+    const FlexItem_t* item = a_FlexGetItem( mainmenu_flex, i );
+    if ( !item ) continue;
+
+    int hovered = point_in_rect( mx, my, item->calc_x, item->calc_y, item->w, item->h );
+    int selected = ( i == mainmenu_sel );
+    int highlight = hovered || selected;
+
+    aColor_t btn_bg = highlight ? (aColor_t){70, 70, 110, 255} : (aColor_t){45, 45, 65, 255};
+    aColor_t btn_border = highlight ? (aColor_t){255, 255, 255, 255} : (aColor_t){120, 120, 150, 200};
+
+    a_DrawFilledRect(
+      (aRectf_t){(float)item->calc_x, (float)item->calc_y,
+                 (float)item->w, (float)item->h},
+      btn_bg
+    );
+    a_DrawRect(
+      (aRectf_t){(float)item->calc_x, (float)item->calc_y,
+                 (float)item->w, (float)item->h},
+      btn_border
+    );
+
+    aTextStyle_t btn_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = highlight ? (aColor_t){255, 255, 255, 255} : (aColor_t){180, 180, 180, 255},
+      .align = TEXT_ALIGN_CENTER,
+      .scale = 0.6f
+    };
+    a_DrawText( labels[i],
+                item->calc_x + item->w / 2,
+                item->calc_y + 10,
+                btn_style );
+  }
 }
 
 // ============================================================================
@@ -873,18 +1056,18 @@ static void level_up_draw( void )
       .type = FONT_ENTER_COMMAND,
       .fg = {180, 180, 220, 255},
       .align = TEXT_ALIGN_CENTER,
-      .scale = 0.4f
+      .scale = 0.5f
     };
-    a_DrawText( info->weapon_name, cx, top + 12, weapon_style );
+    a_DrawText( info->weapon_name, cx, top + 14, weapon_style );
 
     // Upgrade name
     aTextStyle_t name_style = {
       .type = FONT_ENTER_COMMAND,
       .fg = {255, 255, 255, 255},
       .align = TEXT_ALIGN_CENTER,
-      .scale = 0.55f
+      .scale = 0.7f
     };
-    a_DrawText( info->upgrade_name, cx, top + 32, name_style );
+    a_DrawText( info->upgrade_name, cx, top + 38, name_style );
 
     // Tier label ("I", "II", "III")
     const char* tier_labels[] = { "I", "II", "III" };
@@ -893,9 +1076,9 @@ static void level_up_draw( void )
       .type = FONT_ENTER_COMMAND,
       .fg = border_color,
       .align = TEXT_ALIGN_CENTER,
-      .scale = 0.45f
+      .scale = 0.6f
     };
-    a_DrawText( tier_str, cx, top + 56, tier_style );
+    a_DrawText( tier_str, cx, top + 68, tier_style );
 
     // Rarity label
     const char* rarity_str;
@@ -909,14 +1092,14 @@ static void level_up_draw( void )
       .type = FONT_ENTER_COMMAND,
       .fg = {border_color.r, border_color.g, border_color.b, 160},
       .align = TEXT_ALIGN_CENTER,
-      .scale = 0.3f
+      .scale = 0.4f
     };
-    a_DrawText( rarity_str, cx, top + 76, rarity_style );
+    a_DrawText( rarity_str, cx, top + 92, rarity_style );
 
     // Separator line
     a_DrawLine(
-      item->calc_x + 10, top + 92,
-      item->calc_x + item->w - 10, top + 92,
+      item->calc_x + 10, top + 112,
+      item->calc_x + item->w - 10, top + 112,
       (aColor_t){255, 255, 255, 40}
     );
 
@@ -927,10 +1110,10 @@ static void level_up_draw( void )
         .type = FONT_ENTER_COMMAND,
         .fg = {200, 200, 200, 220},
         .align = TEXT_ALIGN_CENTER,
-        .scale = 0.35f,
+        .scale = 0.45f,
         .wrap_width = item->w - 20
       };
-      a_DrawText( info->descriptions[tier], cx, top + 102, desc_style );
+      a_DrawText( info->descriptions[tier], cx, top + 122, desc_style );
     }
 
     // Key hint at bottom
@@ -940,9 +1123,9 @@ static void level_up_draw( void )
       .type = FONT_ENTER_COMMAND,
       .fg = selected ? (aColor_t){255, 255, 255, 255} : (aColor_t){150, 150, 150, 200},
       .align = TEXT_ALIGN_CENTER,
-      .scale = 0.5f
+      .scale = 0.6f
     };
-    a_DrawText( key_text, cx, top + item->h - 28, key_style );
+    a_DrawText( key_text, cx, top + item->h - 32, key_style );
   }
 }
 

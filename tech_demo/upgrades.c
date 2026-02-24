@@ -26,6 +26,21 @@ static const UpgradeInfo_t upgrade_table[UPG_COUNT] = {
     {"Projectile speed +25%", "Speed +50%", "Speed +75%"},
     RARITY_COMMON, 60
   },
+  [UPG_WAND_RICOCHET] = {
+    UPG_WAND_RICOCHET, WEAPON_WAND, "WAND", "Ricochet",
+    {"Bounces to 1 nearby enemy", "Bounces to 2", "Bounces to 3"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_WAND_HOMING] = {
+    UPG_WAND_HOMING, WEAPON_WAND, "WAND", "Homing",
+    {"Bullets gently curve toward enemies", "Stronger curve", "Aggressive tracking"},
+    RARITY_COMMON, 60
+  },
+  [UPG_WAND_SPLINTER] = {
+    UPG_WAND_SPLINTER, WEAPON_WAND, "WAND", "Splinter",
+    {"On hit: 2 fragments at +/-45 deg", "3 fragments", "4 fragments + pierce"},
+    RARITY_RARE, 10
+  },
 
   // === SPIN ===
   [UPG_SPIN_COOLDOWN] = {
@@ -46,6 +61,21 @@ static const UpgradeInfo_t upgrade_table[UPG_COUNT] = {
   [UPG_SPIN_LINGER_ZONE] = {
     UPG_SPIN_LINGER_ZONE, WEAPON_SPIN, "SPIN", "Lingering Zone",
     {"Leaves damage zone for 1s", "Zone lasts 1.5s", "Zone lasts 2s"},
+    RARITY_RARE, 10
+  },
+  [UPG_SPIN_VACUUM] = {
+    UPG_SPIN_VACUUM, WEAPON_SPIN, "SPIN", "Vacuum",
+    {"Pulls enemies from donut ring inward", "Wider pull ring", "Massive pull from 2x radius"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_SPIN_AFTERSHOCK] = {
+    UPG_SPIN_AFTERSHOCK, WEAPON_SPIN, "SPIN", "Aftershock",
+    {"Expanding shockwave ring after spin", "Ring travels further", "Far ring + more damage"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_SPIN_ELECTRIC] = {
+    UPG_SPIN_ELECTRIC, WEAPON_SPIN, "SPIN", "Electric Spin",
+    {"Spin-hit enemies become conductors 2s", "3s duration", "4s + 50% wider chain radius"},
     RARITY_RARE, 10
   },
 
@@ -70,6 +100,21 @@ static const UpgradeInfo_t upgrade_table[UPG_COUNT] = {
     {"Arcs persist 0.5s dealing tick damage", "Arcs persist 0.8s", "Arcs persist 1.2s"},
     RARITY_RARE, 10
   },
+  [UPG_CHAIN_OVERLOAD] = {
+    UPG_CHAIN_OVERLOAD, WEAPON_CHAIN, "CHAIN", "Overload",
+    {"3+ chain hits: final target explodes", "Medium AoE", "Large AoE + chains again"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_CHAIN_MAGNETIC_PULL] = {
+    UPG_CHAIN_MAGNETIC_PULL, WEAPON_CHAIN, "CHAIN", "Magnetic Pull",
+    {"Chained enemies pulled together", "Stronger pull", "Enemies clump at midpoint"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_CHAIN_STATIC_FIELD] = {
+    UPG_CHAIN_STATIC_FIELD, WEAPON_CHAIN, "CHAIN", "Static Field",
+    {"Chained enemies stunned 0.3s", "0.5s stun", "0.8s stun + 50% more damage"},
+    RARITY_RARE, 10
+  },
 
   // === ORBIT ===
   [UPG_ORBIT_EXTRA_ORB] = {
@@ -92,6 +137,21 @@ static const UpgradeInfo_t upgrade_table[UPG_COUNT] = {
     {"Orb leaves damaging trail 0.3s", "Trail lasts 0.5s", "Trail lasts 0.8s"},
     RARITY_RARE, 10
   },
+  [UPG_ORBIT_GRAVITY_WELL] = {
+    UPG_ORBIT_GRAVITY_WELL, WEAPON_ORBIT, "ORBIT", "Gravity Well",
+    {"Orbs leave a trailing slow field", "Wider + longer field", "Biggest field + bonus damage"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_ORBIT_SHATTER] = {
+    UPG_ORBIT_SHATTER, WEAPON_ORBIT, "ORBIT", "Shatter",
+    {"Orbs explode into 3 projectiles", "4 projectiles", "6 projectiles + pierce"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_ORBIT_GROWING_ORB] = {
+    UPG_ORBIT_GROWING_ORB, WEAPON_ORBIT, "ORBIT", "Growing Orb",
+    {"Orbs grow to 1.5x size over duration", "Grow to 2x", "3x + damage scales with size"},
+    RARITY_RARE, 10
+  },
 
   // === BOMB ===
   [UPG_BOMB_COOLDOWN] = {
@@ -112,6 +172,21 @@ static const UpgradeInfo_t upgrade_table[UPG_COUNT] = {
   [UPG_BOMB_LINGER_FIRE] = {
     UPG_BOMB_LINGER_FIRE, WEAPON_BOMB, "BOMB", "Lingering Fire",
     {"Ground burns for 1.5s", "Burns 2.5s", "Burns 3.5s"},
+    RARITY_RARE, 10
+  },
+  [UPG_BOMB_CLUSTER] = {
+    UPG_BOMB_CLUSTER, WEAPON_BOMB, "BOMB", "Cluster Bomb",
+    {"4 mini-bombs scatter from explosion", "5 mini-bombs", "6 mini-bombs + bigger blasts"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_BOMB_NAPALM] = {
+    UPG_BOMB_NAPALM, WEAPON_BOMB, "BOMB", "Napalm",
+    {"Impact leaves spreading fire (2s)", "Faster spread, larger", "Huge spread + intensifies"},
+    RARITY_UNCOMMON, 30
+  },
+  [UPG_BOMB_CRATER] = {
+    UPG_BOMB_CRATER, WEAPON_BOMB, "BOMB", "Crater",
+    {"Explosion leaves slow zone 5s", "7s duration", "8s + enemies take 30% more damage"},
     RARITY_RARE, 10
   },
 };

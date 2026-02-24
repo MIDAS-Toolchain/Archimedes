@@ -4,10 +4,11 @@
 #include "weapons.h"
 #include "hotbar.h"
 #include "player_actions.h"
+#include "stats.h"
 
 #define MAX_DROPS      16
 #define DROP_SIZE       30.0f
-#define PICKUP_RADIUS  44.0f
+#define PICKUP_RADIUS  56.0f
 #define DROP_BOB_SPEED 3.0f
 #define DROP_BOB_AMP   3.0f
 #define ARROW_BOB_SPEED 4.0f
@@ -114,6 +115,7 @@ void drops_update(float dt)
     if (dist < PICKUP_RADIUS) {
       if (drops[i].type == DROP_HEALTH) {
         player_heal(10);
+        stats_add_score(2);
         drops[i].active = 0;
         if (heal_sound_loaded) {
           aAudioOptions_t opts = {

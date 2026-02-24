@@ -7,6 +7,8 @@ core.*
 #c
 bin/
 obj/
+tech_demo/bin/
+tech_demo/obj/
 
 # Python
 __pycache__/
@@ -19,3 +21,4 @@ index/
 
 # Wiki
 Archimedes.wiki/
+highscore.dat

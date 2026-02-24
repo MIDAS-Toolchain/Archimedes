@@ -47,38 +47,76 @@ void hud_draw_game(float time_remaining)
       .scale = 0.3f
     };
     a_DrawText( "SCORE", 16, 30, score_label );
+
+    // High score below current score
+    char best_text[32];
+    snprintf( best_text, sizeof(best_text), "%d", stats_get_best_score() );
+    aTextStyle_t best_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = {255, 220, 80, 255},
+      .align = TEXT_ALIGN_LEFT,
+      .scale = 0.45f
+    };
+    a_DrawText( best_text, 16, 44, best_style );
+
+    aTextStyle_t best_label = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = {200, 180, 60, 150},
+      .align = TEXT_ALIGN_LEFT,
+      .scale = 0.25f
+    };
+    a_DrawText( "BEST", 16, 60, best_label );
   }
 
-  // Draw enemy count and spawn timer (top right)
-  int current_enemy_count = enemy_get_count();
-  char enemy_count_text[32];
-  snprintf( enemy_count_text, sizeof(enemy_count_text), "Enemies: %d/%d", current_enemy_count, MAX_ENEMIES );
-
-  aTextStyle_t enemy_count_style = {
-    .type = FONT_ENTER_COMMAND,
-    .fg = {255, 255, 255, 255},
-    .align = TEXT_ALIGN_RIGHT,
-    .wrap_width = 0,
-    .scale = 0.6f
-  };
-  a_DrawText( enemy_count_text, SCREEN_WIDTH - 20, 15, enemy_count_style );
-
-  // Draw spawn timer (pauses at 0:00 if at max capacity)
-  char spawn_timer_text[32];
-  if ( current_enemy_count >= director_get_max_active() )
+  // Draw difficulty stats (top right)
   {
-    snprintf( spawn_timer_text, sizeof(spawn_timer_text), "Next spawn: --" );
-  }
-  else
-  {
-    float time_until_spawn = director_get_spawn_interval() - director_get_spawn_timer();
-    if ( time_until_spawn < 0.0f ) time_until_spawn = 0.0f;
-    int spawn_seconds = (int)time_until_spawn;
-    int spawn_hundredths = (int)((time_until_spawn - spawn_seconds) * 100);
-    snprintf( spawn_timer_text, sizeof(spawn_timer_text), "Next spawn: %d:%02d", spawn_seconds, spawn_hundredths );
-  }
+    aTextStyle_t label_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = {160, 160, 180, 180},
+      .align = TEXT_ALIGN_RIGHT,
+      .scale = 0.3f
+    };
+    aTextStyle_t value_style = {
+      .type = FONT_ENTER_COMMAND,
+      .fg = {255, 255, 255, 255},
+      .align = TEXT_ALIGN_RIGHT,
+      .scale = 0.35f
+    };
 
-  a_DrawText( spawn_timer_text, SCREEN_WIDTH - 20, 40, enemy_count_style );
+    int rx = SCREEN_WIDTH - 16;
+    int ry = 8;
+    int line_h = 16;
+    char buf[32];
+
+    int current_enemy_count = enemy_get_count();
+    int max_active = director_get_max_active();
+    float speed_mult = director_get_speed_mult();
+    int hp_bonus = director_get_hp_bonus();
+    float spawn_interval = director_get_spawn_interval();
+
+    snprintf( buf, sizeof(buf), "%d / %d", current_enemy_count, max_active );
+    a_DrawText( "ENEMIES", rx, ry, label_style );
+    ry += 10;
+    a_DrawText( buf, rx, ry, value_style );
+    ry += line_h;
+
+    snprintf( buf, sizeof(buf), "x%.1f", speed_mult );
+    a_DrawText( "SPEED", rx, ry, label_style );
+    ry += 10;
+    a_DrawText( buf, rx, ry, value_style );
+    ry += line_h;
+
+    snprintf( buf, sizeof(buf), "+%d", hp_bonus );
+    a_DrawText( "EXTRA HP", rx, ry, label_style );
+    ry += 10;
+    a_DrawText( buf, rx, ry, value_style );
+    ry += line_h;
+
+    snprintf( buf, sizeof(buf), "%.1fs", spawn_interval );
+    a_DrawText( "SPAWN RATE", rx, ry, label_style );
+    ry += 10;
+    a_DrawText( buf, rx, ry, value_style );
+  }
 
   // Draw player health bar (top center)
   {

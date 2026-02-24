@@ -5,6 +5,7 @@ typedef enum {
   PICKUP_FIRE_CONE,
   PICKUP_SPEED,
   PICKUP_SHIELD,
+  PICKUP_SLOW_AURA,
   PICKUP_TYPE_COUNT
 } PickupType_t;
 
