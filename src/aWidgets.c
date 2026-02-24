@@ -212,15 +212,18 @@ void a_DoWidget( void )
 
       handle_input_widget = 0;
     }
+    
+    if( app.mouse.button == 1 && 
+      !WithinRange( app.mouse.x, app.mouse.y, current_rect ) )
+    {
+      app.mouse.button = 0;
+      app.mouse.clicks = 0;
+      handle_input_widget = 0;
+      return;
+    }
 
     if( app.mouse.button == 1 && app.mouse.clicks == 2 )
     {
-      if ( WithinRange( app.mouse.x, app.mouse.y, current_rect ) )
-      {
-        handle_input_widget = 0;
-        return;
-      }
-
       app.mouse.button = 0;
       app.mouse.clicks = 0;
       memset( curr_input->text, 0, MAX_NAME_LENGTH );
@@ -1425,7 +1428,11 @@ static void DrawInputWidget( aWidget_t* w )
       .w = ( glpyh_rect.w * input->visible_length ),
       .h = ( glpyh_rect.h )
     };
-    a_DrawRect( text_rect, black );
+
+    if( w->boxed == 1 )
+    {
+      a_DrawRect( text_rect, black );
+    }
 
     int scroll_offset = 0;
 
