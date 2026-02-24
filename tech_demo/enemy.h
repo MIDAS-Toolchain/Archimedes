@@ -9,6 +9,7 @@ typedef enum {
   ENEMY_TYPE_GRUNT,
   ENEMY_TYPE_DASHER,
   ENEMY_TYPE_BRUTE,
+  ENEMY_TYPE_SHAMAN,
   ENEMY_TYPE_COUNT
 } EnemyType_t;
 
@@ -36,6 +37,11 @@ typedef enum {
   ENEMY_STATE_RETREAT,        // Moving back to flanking position after hitting player
   ENEMY_STATE_SEEKING_HEALTH, // Brute sprinting to steal a health pickup
   ENEMY_STATE_SEEKING_PICKUP, // Brute sprinting to steal a power pickup
+  ENEMY_STATE_SEEKING_CORPSE, // Shaman moving toward a corpse to eat
+  ENEMY_STATE_EATING,         // Shaman consuming a corpse
+  ENEMY_STATE_SEEKING_ALLY,   // Shaman moving toward ally to heal
+  ENEMY_STATE_HEALING,        // Shaman channeling heal beam
+  ENEMY_STATE_FLEEING,        // Shaman running from player
   ENEMY_STATE_HIT_KNOCKBACK,
   ENEMY_STATE_CORPSE
 } EnemyState_t;
@@ -86,6 +92,27 @@ typedef struct {
   // Difficulty scaling (set at spawn)
   float speed_mult;
   int bonus_hp;
+
+  // Corpse tracking (all types)
+  int base_hits_to_kill;        // Original hits_to_kill (set at spawn from stats)
+  int corpse_consumed;          // Set when shaman eats this corpse
+
+  // Upgrade-applied debuffs
+  float conductor_timer;        // Electric Spin: chain lightning conductor
+  float stun_timer;             // Static Field: can't move/attack while > 0
+  float stun_damage_mult;       // Static Field T3: 1.5x damage taken (default 1.0)
+
+  // Shaman healing
+  int stored_heal_value;        // HP from eaten corpse (0 = passive 1HP mode)
+  int heal_target;              // Enemy index being healed (-1 = none)
+  float heal_channel_timer;     // 1.0s countdown during HEALING
+  float heal_cooldown_timer;    // Counts down to 0, ready when 0
+  float eat_timer;              // 0.5s countdown during EATING
+  int target_corpse;            // Enemy index of corpse being sought (-1 = none)
+  float orbit_angle;            // For strafing behavior
+  float orbit_dir_timer;        // Time until orbit direction change
+  int orbit_direction;          // +1 or -1
+  float heal_flash_timer;       // Brief green flash on heal target
 } Enemy_t;
 
 void enemy_init(int max_enemies, int max_blood_particles);
@@ -112,5 +139,16 @@ EnemyType_t enemy_get_type(int enemy_index);
 int enemy_find_cluster_target(float radius, float player_x, float player_y);
 int enemy_find_cluster_position(float radius, float player_x, float player_y,
                                 float lead_time, float* out_x, float* out_y);
+
+// Upgrade debuff setters/getters
+void enemy_set_conductor(int enemy_index, float duration);
+int enemy_is_conductor(int enemy_index);
+float enemy_get_conductor_bonus_radius(int enemy_index);
+void enemy_set_stun(int enemy_index, float duration, float damage_mult);
+void enemy_displace(int enemy_index, float dx, float dy);
+int enemy_brute_slow_aura_check(float x, float y);
+
+// Shaman support
+int enemy_get_shaman_count(void);
 
 #endif /* ENEMY_H */

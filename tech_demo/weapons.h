@@ -92,4 +92,7 @@ const Weapon_t* weapons_get_slot(int slot);
 float weapons_get_cooldown_progress(int slot);
 int weapons_get_count(void);
 
+// Crater zone check (for enemy slow + damage amp)
+int weapons_is_in_crater(float x, float y, float* out_damage_mult);
+
 #endif /* WEAPONS_H */

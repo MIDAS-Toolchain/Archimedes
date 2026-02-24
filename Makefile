@@ -13,9 +13,7 @@ OBJ_DIR   = obj
 INC_DIR   = include
 BIN_DIR   = bin
 TEST_DIR  = test
-TEM_DIR   = template
 JSON_DIR  = json
-INDEX_DIR = index
 EDITOR_DIR      = tools/WidgetEditor/src
 EDITOR_INC_DIR  = tools/WidgetEditor/include
 BITMASK_DIR     = tools/BitmaskGenerator/src
@@ -73,40 +71,16 @@ WIDGET_EIDTOR_SRCS = WE_stage.c
 
 BITMASK_GEN_SRCS = Bitmask_stage.c
 
-NATIVE_SRCS = player_actions.c\
-							test_text.c\
-							audio_test.c\
-							enemy.c\
-							hotbar.c\
-							weapons.c\
-							drops.c\
-							pickups.c\
-							game_audio.c\
-							blood.c\
-							game_director.c\
-							collision.c\
-							game_hud.c\
-						xp.c\
-						upgrades.c\
-						fire_particles.c\
-						stats.c
-
 SHARED_OBJS = $(patsubst %.c, $(OBJ_DIR_SHARED)/%.o, $(ARCHIMEDES_SRCS))
-TEMPLATE_OBJS = $(patsubst %.c, $(OBJ_DIR_NATIVE)/%.o, $(NATIVE_SRCS))
 EMCC_OBJS = $(patsubst %.c, $(OBJ_DIR_EM)/%.o, $(ARCHIMEDES_SRCS))
-EMCC_TEMPLATE_OBJS = $(patsubst %.c, $(OBJ_DIR_EM)/%.o, $(NATIVE_SRCS))
 NATIVE_LIB_OBJS = $(patsubst %.c, $(OBJ_DIR_NATIVE)/%.o, $(ARCHIMEDES_SRCS))
 EIDTOR_LIB_OBJS = $(patsubst %.c, $(OBJ_DIR_EDITOR)/%.o, $(WIDGET_EIDTOR_SRCS))
 BITMASK_LIB_OBJS = $(patsubst %.c, $(OBJ_DIR_BITMASK)/%.o, $(BITMASK_GEN_SRCS))
 
-MAIN_OBJ = $(OBJ_DIR_NATIVE)/n_main.o
 TEST_WID_OBJ = $(OBJ_DIR_NATIVE)/test_widgets.o
 EDITOR_OBJ = $(OBJ_DIR_EDITOR)/WidgetEditor.o
 BITMASK_OBJ = $(OBJ_DIR_BITMASK)/BitmaskGen.o
-EM_OBJ = $(OBJ_DIR_EM)/em_main.o
 
-EMCC_EXE_OBJS = $(EM_OBJ) $(EMCC_TEMPLATE_OBJS) $(BIN_DIR)/libArchimedes.a
-NATIVE_EXE_OBJS = $(NATIVE_LIB_OBJS) $(TEMPLATE_OBJS) $(MAIN_OBJ)
 TEST_EXE_OBJS = $(NATIVE_LIB_OBJS) $(TEST_WID_OBJ)
 EDITOR_EXE_OBJS = $(EDITOR_LIB_OBJS) $(EDITOR_OBJ)
 BITMASK_EXE_OBJS = $(BITMASK_LIB_OBJS) $(BITMASK_OBJ)
@@ -116,8 +90,8 @@ BITMASK_EXE_OBJS = $(BITMASK_LIB_OBJS) $(BITMASK_OBJ)
 # PHONY TARGETS
 # ====================================================================
 
-.PHONY: all shared editor bitmask EM EMARCH test clean install uninstall ainstall auninstall updateHeader bear bearclean verify
-all: $(BIN_DIR)/native
+.PHONY: all shared editor bitmask EMARCH test clean install uninstall ainstall auninstall updateHeader bear bearclean verify
+all: shared
 shared: $(BIN_DIR)/libArchimedes.so
 test:$(BIN_DIR)/test
 editor:$(BIN_DIR)/editor
@@ -125,7 +99,6 @@ bitmask:$(BIN_DIR)/bitmask
 
 # Emscripten Targets
 
-EM: $(INDEX_DIR)/index
 EMARCH: $(BIN_DIR)/libArchimedes.a
 
 
@@ -137,11 +110,8 @@ EMARCH: $(BIN_DIR)/libArchimedes.a
 $(BIN_DIR) $(OBJ_DIR_NATIVE) $(OBJ_DIR_SHARED) $(OBJ_DIR_EDITOR) $(OBJ_DIR_BITMASK) $(OBJ_DIR_EM):
 	mkdir -p $@
 
-$(INDEX_DIR):
-	mkdir -p $@
-
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) $(INDEX_DIR)
+	rm -rf $(OBJ_DIR) $(BIN_DIR)
 	@clear
 
 bear:
@@ -169,9 +139,6 @@ $(OBJ_DIR_SHARED)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR_SHARED)
 $(OBJ_DIR_NATIVE)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR_NATIVE)
 	$(CC) -c $< -o $@ $(NATIVE_C_FLAGS)
 
-$(OBJ_DIR_NATIVE)/%.o: $(TEM_DIR)/%.c | $(OBJ_DIR_NATIVE)
-	$(CC) -c $< -o $@ $(NATIVE_C_FLAGS)
-
 $(OBJ_DIR_EDITOR)/%.o: $(EDITOR_DIR)/%.c | $(OBJ_DIR_EDITOR)
 	$(CC) -c $< -o $@ $(EDITOR_C_FLAGS)
 
@@ -181,21 +148,11 @@ $(OBJ_DIR_BITMASK)/%.o: $(BITMASK_DIR)/%.c | $(OBJ_DIR_BITMASK)
 $(OBJ_DIR_NATIVE)/test_widgets.o: $(TEST_DIR)/test_widgets.c | $(OBJ_DIR_NATIVE)
 	$(CC) -c $< -o $@ $(NATIVE_C_FLAGS)
 
-$(OBJ_DIR_NATIVE)/n_main.o: $(TEM_DIR)/main.c | $(OBJ_DIR_NATIVE)
-	$(CC) -c $< -o $@ $(NATIVE_C_FLAGS) -I$(TEM_DIR)
-
-
 # ====================================================================
 # COMPILATION RULES (Emscripten - ECC)
 # ====================================================================
 
 $(OBJ_DIR_EM)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR_EM)
-	$(ECC) -c $< -o $@ $(EMSCRIP_C_FLAGS)
-
-$(OBJ_DIR_EM)/%.o: $(TEM_DIR)/%.c | $(OBJ_DIR_EM)
-	$(ECC) -c $< -o $@ $(EMSCRIP_C_FLAGS)
-
-$(OBJ_DIR_EM)/em_main.o: $(TEM_DIR)/main.c | $(OBJ_DIR_EM)
 	$(ECC) -c $< -o $@ $(EMSCRIP_C_FLAGS)
 
 # ====================================================================
@@ -205,10 +162,6 @@ $(OBJ_DIR_EM)/em_main.o: $(TEM_DIR)/main.c | $(OBJ_DIR_EM)
 # Target: Shared Library (.so)
 $(BIN_DIR)/libArchimedes.so: $(SHARED_OBJS) | $(BIN_DIR)
 	$(CC) -shared $^ -o $@ $(LDLIBS)
-
-# Target: Native Executable
-$(BIN_DIR)/native: $(NATIVE_EXE_OBJS) | $(BIN_DIR)
-	$(CC) $^ -o $@ $(NATIVE_C_FLAGS) $(LDLIBS)
 
 $(BIN_DIR)/test: $(TEST_EXE_OBJS) | $(BIN_DIR)
 	$(CC) $^ -o $@ $(NATIVE_C_FLAGS) $(LDLIBS)
@@ -221,7 +174,3 @@ $(BIN_DIR)/bitmask: $(BITMASK_EXE_OBJS) | $(BIN_DIR)
 
 $(BIN_DIR)/libArchimedes.a: $(EMCC_OBJS) | $(BIN_DIR)
 	$(EMAR) $@ $^
-
-$(INDEX_DIR)/index: $(EMCC_EXE_OBJS) | $(INDEX_DIR)
-	$(ECC) $^ -s WASM=1 $(EFLAGS) --shell-file htmlTemplate/template.html --preload-file resources/ -o $@.html
-

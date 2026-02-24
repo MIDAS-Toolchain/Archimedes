@@ -5,10 +5,11 @@
 #include "player_actions.h"
 #include "enemy.h"
 #include "game_audio.h"
+#include "stats.h"
 
 #define MAX_XP_ORBS       300
-#define XP_MAGNET_RADIUS  120.0f
-#define XP_MAGNET_SPEED   200.0f
+#define XP_MAGNET_RADIUS  144.0f
+#define XP_MAGNET_SPEED   220.0f
 #define XP_COLLECT_DIST    15.0f
 #define XP_ORB_VISUAL_R     3
 #define XP_MAX_LEVEL       15
@@ -55,6 +56,7 @@ void xp_spawn_orbs(float death_x, float death_y, int enemy_type)
   int count = 1;
   if (enemy_type == ENEMY_TYPE_DASHER) count = 2;
   else if (enemy_type == ENEMY_TYPE_BRUTE) count = 5;
+  else if (enemy_type == ENEMY_TYPE_SHAMAN) count = 3;
 
   for (int i = 0; i < count; i++) {
     for (int j = 0; j < MAX_XP_ORBS; j++) {
@@ -88,6 +90,7 @@ void xp_update(float dt)
     if (dist < XP_COLLECT_DIST) {
       orbs[i].active = 0;
       current_xp += orbs[i].value;
+      stats_add_score(1);
       game_audio_play_coin();
 
       // Check for level-up(s)

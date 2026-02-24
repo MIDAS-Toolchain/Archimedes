@@ -90,6 +90,7 @@ float player_get_dash_cooldown_remaining(void);
 int player_take_damage(int amount);
 void player_heal(int amount);
 void player_draw_screen_flash(void);
+void player_clear_screen_flashes(void);
 int player_get_hp(void);
 int player_get_max_hp(void);
 int player_is_alive(void);
@@ -107,5 +108,8 @@ float player_get_speed_multiplier(void);
 float player_get_facing_x(void);
 float player_get_facing_y(void);
 void player_increase_max_hp(int amount);
+
+// Slow aura: returns current radius (0 if inactive)
+float player_get_slow_aura_radius(void);
 
 #endif /* PLAYER_ACTIONS_H */

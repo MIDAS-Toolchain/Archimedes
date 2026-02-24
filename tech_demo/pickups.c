@@ -7,7 +7,7 @@
 #define PICKUP_LIFETIME   10.0f
 #define PICKUP_BLINK_AT   7.0f    // Start blinking at 7s age (3s remaining)
 #define PICKUP_BLINK_RATE 0.15f
-#define PICKUP_COLLECT_DIST 26.0f
+#define PICKUP_COLLECT_DIST 34.0f
 #define PICKUP_DIAMOND_SIZE 14
 #define PICKUP_BOB_SPEED  3.0f
 #define PICKUP_BOB_AMP    2.0f
@@ -77,6 +77,7 @@ static void pickup_color(PickupType_t type, aColor_t* out)
     case PICKUP_FIRE_CONE: *out = (aColor_t){255, 130, 30, 255};  break;
     case PICKUP_SPEED:     *out = (aColor_t){255, 230, 50, 255};  break;
     case PICKUP_SHIELD:    *out = (aColor_t){50, 150, 255, 255};  break;
+    case PICKUP_SLOW_AURA: *out = (aColor_t){100, 200, 255, 255}; break;
     default:               *out = (aColor_t){200, 200, 200, 255}; break;
   }
 }
@@ -87,6 +88,7 @@ static const char* pickup_label(PickupType_t type)
     case PICKUP_FIRE_CONE: return "F";
     case PICKUP_SPEED:     return "Z";
     case PICKUP_SHIELD:    return "S";
+    case PICKUP_SLOW_AURA: return "C";
     default:               return "?";
   }
 }

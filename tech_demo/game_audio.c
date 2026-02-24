@@ -81,7 +81,7 @@ void game_audio_play_hit(void)
   if (!hit_sounds_loaded) return;
   aAudioOptions_t opts = {
     .channel = AUDIO_CHANNEL_ENEMY,
-    .volume = 64,
+    .volume = 33,
     .loops = 0, .fade_ms = 0, .interrupt = 0
   };
   a_AudioPlaySound(&hit_sounds[rand() % HIT_SOUND_COUNT], &opts);
@@ -107,7 +107,7 @@ void game_audio_play_coin(void)
   coin_last_played = idx;
 
   aAudioOptions_t opts = {
-    .channel = AUDIO_CHANNEL_PLAYER,
+    .channel = AUDIO_CHANNEL_AUTO,
     .volume = 48,
     .loops = 0, .fade_ms = 0, .interrupt = 0
   };
@@ -129,7 +129,7 @@ void game_audio_play_fire_hit(void)
 {
   if (!fire_hit_loaded) return;
   aAudioOptions_t opts = {
-    .channel = AUDIO_CHANNEL_PLAYER,
+    .channel = AUDIO_CHANNEL_AUTO,
     .volume = 48,
     .loops = 0, .fade_ms = 0, .interrupt = 0
   };

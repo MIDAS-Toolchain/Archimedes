@@ -49,8 +49,10 @@ static int get_max_active_enemies(void)
 
 static int dasher_unlocked = 0;
 static int brute_unlocked = 0;
+static int shaman_unlocked = 0;
 static int spawns_since_dasher = 0;
 static int spawns_since_brute = 0;
+static int spawns_since_shaman = 0;
 
 static EnemyType_t pick_enemy_type(void)
 {
@@ -62,6 +64,12 @@ static EnemyType_t pick_enemy_type(void)
     return ENEMY_TYPE_DASHER;
   }
 
+  if (!shaman_unlocked && t >= 60.0f) {
+    shaman_unlocked = 1;
+    spawns_since_shaman = 0;
+    return ENEMY_TYPE_SHAMAN;
+  }
+
   if (!brute_unlocked && t >= 90.0f) {
     brute_unlocked = 1;
     spawns_since_brute = 0;
@@ -70,25 +78,38 @@ static EnemyType_t pick_enemy_type(void)
 
   float dasher_chance = dasher_unlocked ? 0.08f * (float)spawns_since_dasher : 0.0f;
   float brute_chance  = brute_unlocked  ? 0.08f * (float)spawns_since_brute  : 0.0f;
+  float shaman_chance = shaman_unlocked ? 0.06f * (float)spawns_since_shaman : 0.0f;
   if (dasher_chance > 0.7f) dasher_chance = 0.7f;
   if (brute_chance > 0.5f)  brute_chance = 0.5f;
+  if (shaman_chance > 0.3f) shaman_chance = 0.3f;
+  // Suppress shaman spawns if 2+ already alive
+  if (enemy_get_shaman_count() >= 2) shaman_chance *= 0.1f;
 
-  float total = 1.0f + dasher_chance + brute_chance;
+  float total = 1.0f + dasher_chance + brute_chance + shaman_chance;
   float roll = RANDF(0, total);
 
   if (roll < brute_chance) {
     spawns_since_brute = 0;
     spawns_since_dasher++;
+    spawns_since_shaman++;
     return ENEMY_TYPE_BRUTE;
   }
   if (roll < brute_chance + dasher_chance) {
     spawns_since_dasher = 0;
     spawns_since_brute++;
+    spawns_since_shaman++;
     return ENEMY_TYPE_DASHER;
+  }
+  if (roll < brute_chance + dasher_chance + shaman_chance) {
+    spawns_since_shaman = 0;
+    spawns_since_dasher++;
+    spawns_since_brute++;
+    return ENEMY_TYPE_SHAMAN;
   }
 
   spawns_since_dasher++;
   spawns_since_brute++;
+  spawns_since_shaman++;
   return ENEMY_TYPE_GRUNT;
 }
 
@@ -159,8 +180,10 @@ void director_init(void)
   health_drop_timer = 0.0f;
   dasher_unlocked = 0;
   brute_unlocked = 0;
+  shaman_unlocked = 0;
   spawns_since_dasher = 0;
   spawns_since_brute = 0;
+  spawns_since_shaman = 0;
   for (int i = 0; i < TIMED_DROP_COUNT; i++) {
     timed_drops[i].dropped = 0;
   }
@@ -246,4 +269,14 @@ float director_get_spawn_timer(void)
 int director_get_max_active(void)
 {
   return get_max_active_enemies();
+}
+
+float director_get_speed_mult(void)
+{
+  return get_speed_mult();
+}
+
+int director_get_hp_bonus(void)
+{
+  return get_hp_bonus();
 }
