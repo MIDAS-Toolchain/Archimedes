@@ -9,7 +9,11 @@
 #include <math.h>
 #include "Archimedes.h"
 #include "player_actions.h"
+#include "upgrades.h"
 #include "enemy.h"
+#include "pickups.h"
+#include "game_audio.h"
+#include "fire_particles.h"
 
 // ============================================================================
 // Player State
@@ -48,6 +52,8 @@ static int heal_text_amount = 0;
 
 static float dash_cooldown_timer = 0.0f;  // counts up toward DASH_COOLDOWN
 static float dash_active_timer = 0.0f;    // remaining dash movement time
+static float dash_failed_timer = 0.0f;    // flash timer when dash attempted on cooldown
+#define DASH_FAILED_DURATION 0.6f
 static float dash_dir_x = 0.0f;
 static float dash_dir_y = 0.0f;
 
@@ -61,12 +67,44 @@ typedef struct {
 static DashTrail_t dash_trail[DASH_TRAIL_MAX];
 static float dash_trail_timer = 0.0f;
 
+// Buff system
+static Buff_t player_buffs[PICKUP_TYPE_COUNT];
+static float player_facing_x = 0.0f;
+static float player_facing_y = -1.0f; // Default facing up
+static float cone_aim_x = 0.0f;
+static float cone_aim_y = -1.0f;
+#define CONE_LERP_SPEED 12.0f  // Radians-ish per second (fast but smooth)
+
+// Fire cone ticking
+#define FIRE_CONE_DURATION    4.0f
+#define FIRE_CONE_TICK_RATE   0.2f
+#define FIRE_CONE_RANGE       110.0f
+#define FIRE_CONE_HALF_ANGLE  0.5498f  // ~31.5 degrees (30deg * 1.05)
+#define FIRE_CONE_DAMAGE      10
+
+// Speed buff
+#define SPEED_BUFF_DURATION   3.0f
+#define SPEED_BUFF_MULT       1.5f
+
+// Shield buff
+#define SHIELD_BUFF_DURATION  5.0f
+#define SHIELD_BUFF_HITS      3
+
+static float fire_cone_tick = 0.0f;
+static float shield_flash_timer = 0.0f;
+#define SHIELD_FLASH_DURATION 0.15f
+
+// Per-enemy fire damage cooldown (1s between hits)
+#define FIRE_HIT_COOLDOWN 1.0f
+
 // ============================================================================
 // Targeting
 // ============================================================================
 
 #define AUTO_FIRE_MAX_RANGE 9999.0f
 #define MAX_ENEMY_SCAN 50
+
+static float fire_cooldowns[MAX_ENEMY_SCAN];
 
 // ============================================================================
 // Audio
@@ -87,6 +125,9 @@ typedef struct {
   float x, y;       // Position
   float vx, vy;     // Velocity
   int active;       // Is this bullet alive?
+  int pierce;       // Remaining pierce count (0 = destroy on hit)
+  int hit_enemies[8]; // Enemy indices already hit by this bullet
+  int hit_count;
 } Bullet_t;
 
 static Bullet_t bullets[MAX_BULLETS];
@@ -100,13 +141,28 @@ void player_init(void)
 {
   player_x = 100.0f;
   player_y = 100.0f;
-  player_hp = 100;
+  player_max_hp = 100;
+  player_hp = player_max_hp;
   invincibility_timer = 0.0f;
   screen_flash_timer = 0.0f;
   heal_flash_timer = 0.0f;
   heal_text_timer = 0.0f;
   dash_cooldown_timer = DASH_COOLDOWN; // ready immediately
   dash_active_timer = 0.0f;
+
+  // Clear buffs
+  for (int i = 0; i < PICKUP_TYPE_COUNT; i++) {
+    player_buffs[i].active = 0;
+    player_buffs[i].duration = 0.0f;
+    player_buffs[i].shield_hits = 0;
+  }
+  fire_cone_tick = 0.0f;
+  shield_flash_timer = 0.0f;
+  player_facing_x = 0.0f;
+  player_facing_y = -1.0f;
+  cone_aim_x = 0.0f;
+  cone_aim_y = -1.0f;
+  for (int i = 0; i < MAX_ENEMY_SCAN; i++) fire_cooldowns[i] = 0.0f;
 
   // Clear all bullets
   for (int i = 0; i < MAX_BULLETS; i++) {
@@ -155,9 +211,23 @@ static int find_nearest_enemy(float* out_x, float* out_y)
     {
       nearest_dist = dist;
       nearest_index = i;
-      *out_x = ex + er;
-      *out_y = ey + er;
     }
+  }
+
+  // Lead the shot: predict where the enemy will be when the bullet arrives
+  if (nearest_index >= 0) {
+    float ex, ey;
+    enemy_get_position(nearest_index, &ex, &ey);
+    float er = enemy_get_radius(nearest_index);
+    float ecx = ex + er;
+    float ecy = ey + er;
+
+    float evx, evy;
+    enemy_get_velocity(nearest_index, &evx, &evy);
+
+    float travel_time = nearest_dist / bullet_speed;
+    *out_x = ecx + evx * travel_time;
+    *out_y = ecy + evy * travel_time;
   }
 
   return nearest_index;
@@ -169,6 +239,13 @@ static int find_nearest_enemy(float* out_x, float* out_y)
 
 static void player_shoot_at(float target_x, float target_y)
 {
+  // Projectile speed scaling from upgrade
+  static const float proj_speed_mult[4] = { 1.0f, 1.25f, 1.50f, 1.75f };
+  float speed = bullet_speed * proj_speed_mult[upgrades_get_tier(UPG_WAND_PROJ_SPEED)];
+
+  // Pierce from upgrade tier
+  int pierce = upgrades_get_tier(UPG_WAND_PIERCE);
+
   // Find first inactive bullet slot
   for (int i = 0; i < MAX_BULLETS; i++)
   {
@@ -182,9 +259,11 @@ static void player_shoot_at(float target_x, float target_y)
       {
         bullets[i].x = player_x + 16 - 12.5f;
         bullets[i].y = player_y + 16 - 12.5f;
-        bullets[i].vx = (dx / distance) * bullet_speed;
-        bullets[i].vy = (dy / distance) * bullet_speed;
+        bullets[i].vx = (dx / distance) * speed;
+        bullets[i].vy = (dy / distance) * speed;
         bullets[i].active = 1;
+        bullets[i].pierce = pierce;
+        bullets[i].hit_count = 0;
 
         if (audio_loaded) {
           aAudioOptions_t opts = {
@@ -212,6 +291,7 @@ void player_update(float dt)
   if (invincibility_timer > 0.0f) invincibility_timer -= dt;
   if (screen_flash_timer > 0.0f) screen_flash_timer -= dt;
   if (heal_flash_timer > 0.0f) heal_flash_timer -= dt;
+  if (dash_failed_timer > 0.0f) dash_failed_timer -= dt;
   if (heal_text_timer > 0.0f) {
     heal_text_timer -= dt;
     heal_text_y -= HEAL_TEXT_RISE_SPEED * dt;
@@ -237,7 +317,23 @@ void player_update(float dt)
     dy *= diagonal;
   }
 
+  // Track facing direction for fire cone
+  if (dx != 0.0f || dy != 0.0f) {
+    player_facing_x = dx;
+    player_facing_y = dy;
+    float flen = sqrtf(player_facing_x * player_facing_x + player_facing_y * player_facing_y);
+    if (flen > 0.01f) { player_facing_x /= flen; player_facing_y /= flen; }
+  }
+
   // Check for dash trigger (shift key, must be moving)
+  if ((app.keyboard[SDL_SCANCODE_LSHIFT] || app.keyboard[SDL_SCANCODE_RSHIFT]) &&
+      (dx != 0.0f || dy != 0.0f) &&
+      dash_cooldown_timer < DASH_COOLDOWN && dash_active_timer <= 0.0f &&
+      dash_failed_timer <= 0.0f)
+  {
+    dash_failed_timer = DASH_FAILED_DURATION;
+  }
+
   if ((app.keyboard[SDL_SCANCODE_LSHIFT] || app.keyboard[SDL_SCANCODE_RSHIFT]) &&
       dash_cooldown_timer >= DASH_COOLDOWN && dash_active_timer <= 0.0f &&
       (dx != 0.0f || dy != 0.0f))
@@ -283,9 +379,10 @@ void player_update(float dt)
       }
     }
   } else {
-    // Normal movement
-    player_vx = dx * player_speed;
-    player_vy = dy * player_speed;
+    // Normal movement (with speed buff multiplier)
+    float effective_speed = player_speed * player_get_speed_multiplier();
+    player_vx = dx * effective_speed;
+    player_vy = dy * effective_speed;
   }
 
   // Fade out trail ghosts
@@ -330,20 +427,32 @@ void player_update(float dt)
 
 int player_check_bullet_collision(float enemy_x, float enemy_y, float enemy_radius)
 {
+  return player_check_bullet_collision_ex(enemy_x, enemy_y, enemy_radius, -1);
+}
+
+int player_check_bullet_collision_ex(float enemy_x, float enemy_y, float enemy_radius, int enemy_index)
+{
   for (int i = 0; i < MAX_BULLETS; i++)
   {
-    if (bullets[i].active)
-    {
-      float dx = (bullets[i].x + 4) - (enemy_x + enemy_radius);
-      float dy = (bullets[i].y + 4) - (enemy_y + enemy_radius);
-      float dist = sqrtf(dx * dx + dy * dy);
+    if (!bullets[i].active) continue;
 
-      // Hit detected (bullet radius 4 + enemy radius + 4px forgiveness)
-      if (dist < (4.0f + enemy_radius + 4.0f))
-      {
-        // Don't destroy here - let caller handle it after getting velocity
-        return i; // Return bullet index that hit
+    // Skip if this bullet already hit this enemy (pierce)
+    if (enemy_index >= 0) {
+      int already_hit = 0;
+      for (int h = 0; h < bullets[i].hit_count; h++) {
+        if (bullets[i].hit_enemies[h] == enemy_index) { already_hit = 1; break; }
       }
+      if (already_hit) continue;
+    }
+
+    float dx = (bullets[i].x + 4) - (enemy_x + enemy_radius);
+    float dy = (bullets[i].y + 4) - (enemy_y + enemy_radius);
+    float dist = sqrtf(dx * dx + dy * dy);
+
+    // Hit detected (bullet radius 6 + enemy radius + 6px forgiveness)
+    if (dist < (6.0f + enemy_radius + 6.0f))
+    {
+      return i;
     }
   }
   return -1; // No hit
@@ -448,7 +557,104 @@ void player_fire_at_nearest(void)
   }
 }
 
-void player_do_spin_attack(float radius)
+void player_fire_fan_at_nearest(int count)
+{
+  float target_x, target_y;
+  int nearest = find_nearest_enemy(&target_x, &target_y);
+  if (nearest < 0) return;
+
+  if (count <= 1) {
+    player_shoot_at(target_x, target_y);
+    return;
+  }
+
+  float cx = player_x + 16;
+  float cy = player_y + 16;
+  float dx = target_x - cx;
+  float dy = target_y - cy;
+  float dist = sqrtf(dx * dx + dy * dy);
+  if (dist < 0.1f) return;
+
+  float base_angle = atan2f(dy, dx);
+  float spread = 0.15f;
+  float total_spread = spread * 2.0f;
+
+  // Collect up to `count` unique targets: nearest enemies within the fan cone
+  float fan_targets_x[8];
+  float fan_targets_y[8];
+  int fan_count = 0;
+
+  // First slot is always the primary target
+  fan_targets_x[0] = target_x;
+  fan_targets_y[0] = target_y;
+  fan_count = 1;
+
+  // Find other enemies within the fan spread to aim extra bullets at
+  for (int i = 0; i < MAX_ENEMY_SCAN && fan_count < count; i++) {
+    if (i == nearest || !enemy_is_alive(i)) continue;
+
+    float ex, ey;
+    enemy_get_position(i, &ex, &ey);
+    float er = enemy_get_radius(i);
+    float ecx = ex + er;
+    float ecy = ey + er;
+
+    float edx = ecx - cx;
+    float edy = ecy - cy;
+    float enemy_angle = atan2f(edy, edx);
+
+    // Check if this enemy is within the fan cone
+    float angle_diff = enemy_angle - base_angle;
+    // Normalize to [-PI, PI]
+    while (angle_diff > PI) angle_diff -= 2.0f * PI;
+    while (angle_diff < -PI) angle_diff += 2.0f * PI;
+
+    if (angle_diff >= -spread && angle_diff <= spread) {
+      // Predict position like find_nearest_enemy does
+      float evx, evy;
+      enemy_get_velocity(i, &evx, &evy);
+      float edist = sqrtf(edx * edx + edy * edy);
+      float travel_time = edist / bullet_speed;
+      fan_targets_x[fan_count] = ecx + evx * travel_time;
+      fan_targets_y[fan_count] = ecy + evy * travel_time;
+      fan_count++;
+    }
+  }
+
+  // Fire: aim at found targets first, then spread remaining bullets evenly
+  for (int i = 0; i < count; i++) {
+    if (i < fan_count) {
+      player_shoot_at(fan_targets_x[i], fan_targets_y[i]);
+    } else {
+      float t = (count > 1) ? (float)i / (float)(count - 1) : 0.5f;
+      float angle = base_angle - spread + total_spread * t;
+      float tx = cx + cosf(angle) * dist;
+      float ty = cy + sinf(angle) * dist;
+      player_shoot_at(tx, ty);
+    }
+  }
+}
+
+int player_bullet_on_hit(int bullet_index, int enemy_index)
+{
+  if (bullet_index < 0 || bullet_index >= MAX_BULLETS) return 0;
+  Bullet_t* b = &bullets[bullet_index];
+
+  // Track this enemy as hit
+  if (b->hit_count < 8) {
+    b->hit_enemies[b->hit_count++] = enemy_index;
+  }
+
+  if (b->pierce > 0) {
+    b->pierce--;
+    return 0; // Bullet survives
+  }
+
+  b->active = 0;
+  return 1; // Bullet destroyed
+}
+
+void player_do_spin_attack(float radius, int knockback)
 {
   float cx = player_x + 16;
   float cy = player_y + 16;
@@ -468,10 +674,13 @@ void player_do_spin_attack(float radius)
     float dist = sqrtf(dx * dx + dy * dy);
 
     if (dist < radius) {
-      // Hit with knockback direction away from player
-      float knockback_vx = (dist > 0.1f) ? (dx / dist) * 300.0f : 300.0f;
-      float knockback_vy = (dist > 0.1f) ? (dy / dist) * 300.0f : 0.0f;
-      enemy_hit(i, knockback_vx, knockback_vy);
+      if (knockback) {
+        float knockback_vx = (dist > 0.1f) ? (dx / dist) * 300.0f : 300.0f;
+        float knockback_vy = (dist > 0.1f) ? (dy / dist) * 300.0f : 0.0f;
+        enemy_hit(i, knockback_vx, knockback_vy);
+      } else {
+        enemy_hit(i, 0.0f, 0.0f);
+      }
     }
   }
 }
@@ -483,6 +692,12 @@ void player_do_spin_attack(float radius)
 int player_take_damage(int amount)
 {
   if (invincibility_timer > 0.0f) return 0;
+
+  // Shield absorbs hit — still grant iframes so enemies back off
+  if (player_shield_absorb()) {
+    invincibility_timer = PLAYER_IFRAME_DURATION;
+    return 0;
+  }
 
   player_hp -= amount;
   if (player_hp < 0) player_hp = 0;
@@ -594,4 +809,308 @@ float player_get_dash_cooldown_progress(void)
 int player_is_dashing(void)
 {
   return dash_active_timer > 0.0f;
+}
+
+float player_get_dash_failed_timer(void)
+{
+  return dash_failed_timer;
+}
+
+float player_get_dash_cooldown_remaining(void)
+{
+  if (dash_cooldown_timer >= DASH_COOLDOWN) return 0.0f;
+  return DASH_COOLDOWN - dash_cooldown_timer;
+}
+
+// ============================================================================
+// Buff System
+// ============================================================================
+
+void player_apply_buff(PickupType_t type)
+{
+  Buff_t* b = &player_buffs[type];
+  switch (type) {
+    case PICKUP_FIRE_CONE:
+      b->active = 1;
+      b->duration = FIRE_CONE_DURATION;
+      fire_cone_tick = 0.0f;
+      break;
+    case PICKUP_SPEED:
+      b->active = 1;
+      b->duration = SPEED_BUFF_DURATION;
+      break;
+    case PICKUP_SHIELD:
+      b->active = 1;
+      b->duration = SHIELD_BUFF_DURATION;
+      b->shield_hits = SHIELD_BUFF_HITS;
+      break;
+    default: break;
+  }
+}
+
+void player_update_buffs(float dt)
+{
+  // Tick shield flash
+  if (shield_flash_timer > 0.0f) shield_flash_timer -= dt;
+
+  for (int i = 0; i < PICKUP_TYPE_COUNT; i++) {
+    if (!player_buffs[i].active) continue;
+
+    // Shield has no time limit — only expires when all hits are consumed
+    if (i == PICKUP_SHIELD) continue;
+
+    player_buffs[i].duration -= dt;
+    if (player_buffs[i].duration <= 0.0f) {
+      player_buffs[i].active = 0;
+      continue;
+    }
+  }
+
+  // Tick down per-enemy fire cooldowns
+  for (int i = 0; i < MAX_ENEMY_SCAN; i++) {
+    if (fire_cooldowns[i] > 0.0f) fire_cooldowns[i] -= dt;
+  }
+
+  // Fire cone: find nearest enemy, aim cone at them, damage enemies in cone
+  if (player_buffs[PICKUP_FIRE_CONE].active) {
+    float cx = player_x + 16;
+    float cy = player_y + 16;
+
+    // Find nearest enemy and lerp cone aim toward them
+    float target_x, target_y;
+    int nearest = find_nearest_enemy(&target_x, &target_y);
+    if (nearest >= 0) {
+      float aim_dx = target_x - cx;
+      float aim_dy = target_y - cy;
+      float aim_dist = sqrtf(aim_dx * aim_dx + aim_dy * aim_dy);
+      if (aim_dist > 0.1f) {
+        float goal_x = aim_dx / aim_dist;
+        float goal_y = aim_dy / aim_dist;
+        // Lerp cone_aim toward goal
+        float t = CONE_LERP_SPEED * dt;
+        if (t > 1.0f) t = 1.0f;
+        cone_aim_x += (goal_x - cone_aim_x) * t;
+        cone_aim_y += (goal_y - cone_aim_y) * t;
+        // Re-normalize
+        float len = sqrtf(cone_aim_x * cone_aim_x + cone_aim_y * cone_aim_y);
+        if (len > 0.01f) { cone_aim_x /= len; cone_aim_y /= len; }
+      }
+    }
+    player_facing_x = cone_aim_x;
+    player_facing_y = cone_aim_y;
+
+    fire_cone_tick += dt;
+    if (fire_cone_tick >= FIRE_CONE_TICK_RATE) {
+      fire_cone_tick -= FIRE_CONE_TICK_RATE;
+
+      for (int i = 0; i < MAX_ENEMY_SCAN; i++) {
+        if (!enemy_is_alive(i)) continue;
+        if (fire_cooldowns[i] > 0.0f) continue; // still immune
+
+        float ex, ey;
+        enemy_get_position(i, &ex, &ey);
+        float er = enemy_get_radius(i);
+        float dx = (ex + er) - cx;
+        float dy = (ey + er) - cy;
+        float dist = sqrtf(dx * dx + dy * dy);
+
+        if (dist > FIRE_CONE_RANGE || dist < 0.1f) continue;
+
+        // Check angle: dot product with cone aim direction
+        float ndx = dx / dist;
+        float ndy = dy / dist;
+        float dot = ndx * cone_aim_x + ndy * cone_aim_y;
+        float cone_threshold = cosf(FIRE_CONE_HALF_ANGLE);
+
+        if (dot >= cone_threshold) {
+          enemy_hit(i, 0.0f, 0.0f);
+          fire_cooldowns[i] = FIRE_HIT_COOLDOWN;
+          game_audio_play_fire_hit();
+          // Spawn fire particles at enemy, directed away from player
+          float ex_center = ex + er;
+          float ey_center = ey + er;
+          fire_particles_spawn(ex_center, ey_center, ndx, ndy);
+        }
+      }
+    }
+  }
+}
+
+void player_draw_buffs(void)
+{
+  float cx = player_x + 16;
+  float cy = player_y + 16;
+
+  // Fire cone visual: translucent orange cone
+  if (player_buffs[PICKUP_FIRE_CONE].active) {
+    float pulse = 80.0f + 70.0f * sinf(player_buffs[PICKUP_FIRE_CONE].duration * 8.0f);
+    int alpha = (int)pulse;
+    if (alpha > 200) alpha = 200;
+
+    // Two lines from center at ±30° from facing direction
+    float cos_a = cosf(FIRE_CONE_HALF_ANGLE);
+    float sin_a = sinf(FIRE_CONE_HALF_ANGLE);
+
+    // Rotate facing by +angle and -angle
+    float l1x = player_facing_x * cos_a - player_facing_y * sin_a;
+    float l1y = player_facing_x * sin_a + player_facing_y * cos_a;
+    float l2x = player_facing_x * cos_a + player_facing_y * sin_a;
+    float l2y = -player_facing_x * sin_a + player_facing_y * cos_a;
+
+    int tip1_x = (int)(cx + l1x * FIRE_CONE_RANGE);
+    int tip1_y = (int)(cy + l1y * FIRE_CONE_RANGE);
+    int tip2_x = (int)(cx + l2x * FIRE_CONE_RANGE);
+    int tip2_y = (int)(cy + l2y * FIRE_CONE_RANGE);
+
+    aColor_t cone_color = {255, 130, 30, (uint8_t)alpha};
+    a_DrawFilledTriangle((int)cx, (int)cy, tip1_x, tip1_y, tip2_x, tip2_y, cone_color);
+  }
+
+  // Speed visual: use existing dash trail system (lighter blue-white)
+  if (player_buffs[PICKUP_SPEED].active) {
+    // Draw a subtle yellow glow around player
+    float pulse = 30.0f + 20.0f * sinf(player_buffs[PICKUP_SPEED].duration * 10.0f);
+    a_DrawFilledRect(
+      (aRectf_t){player_x - 3, player_y - 3, 38, 38},
+      (aColor_t){255, 230, 50, (uint8_t)pulse}
+    );
+  }
+
+  // Shield visual: pulsing blue outline + charge pips
+  if (player_buffs[PICKUP_SHIELD].active) {
+    int hits = player_buffs[PICKUP_SHIELD].shield_hits;
+    float pulse = 120.0f + 60.0f * sinf(player_buffs[PICKUP_SHIELD].duration * 6.0f);
+    int sa = (int)(pulse * (float)hits / (float)SHIELD_BUFF_HITS);
+    if (sa > 220) sa = 220;
+
+    // Outer glow ring
+    a_DrawRect(
+      (aRectf_t){player_x - 3, player_y - 3, 38, 38},
+      (aColor_t){50, 150, 255, (uint8_t)(sa / 2)}
+    );
+    // Inner ring
+    a_DrawRect(
+      (aRectf_t){player_x - 2, player_y - 2, 36, 36},
+      (aColor_t){50, 150, 255, (uint8_t)sa}
+    );
+
+    // Shield charge pips: small filled squares below player
+    for (int p = 0; p < SHIELD_BUFF_HITS; p++) {
+      int pip_sz = 5;
+      int pip_gap = 3;
+      int total_w = SHIELD_BUFF_HITS * pip_sz + (SHIELD_BUFF_HITS - 1) * pip_gap;
+      int pip_x = (int)(player_x + 16) - total_w / 2 + p * (pip_sz + pip_gap);
+      int pip_y = (int)(player_y + 36);
+      aColor_t pip_color = (p < hits)
+        ? (aColor_t){50, 180, 255, 220}
+        : (aColor_t){50, 50, 80, 100};
+      a_DrawFilledRect(
+        (aRectf_t){(float)pip_x, (float)pip_y, (float)pip_sz, (float)pip_sz},
+        pip_color
+      );
+    }
+
+    // Flash white on absorb
+    if (shield_flash_timer > 0.0f) {
+      float flash_a = 200.0f * (shield_flash_timer / SHIELD_FLASH_DURATION);
+      a_DrawFilledRect(
+        (aRectf_t){player_x - 4, player_y - 4, 40, 40},
+        (aColor_t){255, 255, 255, (uint8_t)flash_a}
+      );
+    }
+  }
+
+  // Draw buff indicators above hotbar area (small colored squares)
+  int indicator_y = SCREEN_HEIGHT - 70;
+  int indicator_x = SCREEN_WIDTH / 2 - (PICKUP_TYPE_COUNT * 16) / 2;
+  aTextStyle_t ind_style = {
+    .type = FONT_ENTER_COMMAND,
+    .fg = {255, 255, 255, 255},
+    .align = TEXT_ALIGN_CENTER,
+    .scale = 0.3f
+  };
+
+  for (int i = 0; i < PICKUP_TYPE_COUNT; i++) {
+    if (!player_buffs[i].active) continue;
+
+    aColor_t c;
+    const char* label;
+    switch (i) {
+      case PICKUP_FIRE_CONE: c = (aColor_t){255, 130, 30, 200}; label = "F"; break;
+      case PICKUP_SPEED:     c = (aColor_t){255, 230, 50, 200}; label = "Z"; break;
+      case PICKUP_SHIELD:    c = (aColor_t){50, 150, 255, 200};  label = "S"; break;
+      default: c = (aColor_t){200, 200, 200, 200}; label = "?"; break;
+    }
+
+    // Shrink/fade as duration runs out (shield is permanent — always full)
+    float pct;
+    if (i == PICKUP_SHIELD) {
+      pct = 1.0f;
+    } else {
+      float max_dur;
+      switch (i) {
+        case PICKUP_FIRE_CONE: max_dur = FIRE_CONE_DURATION; break;
+        case PICKUP_SPEED:     max_dur = SPEED_BUFF_DURATION; break;
+        default: max_dur = 5.0f; break;
+      }
+      pct = player_buffs[i].duration / max_dur;
+      if (pct > 1.0f) pct = 1.0f;
+    }
+    int sz = 8 + (int)(4.0f * pct);
+    c.a = (uint8_t)(120 + (int)(80.0f * pct));
+
+    int ix = indicator_x + i * 20;
+    a_DrawFilledRect(
+      (aRectf_t){(float)ix, (float)indicator_y, (float)sz, (float)sz},
+      c
+    );
+    a_DrawText(label, ix + sz / 2, indicator_y - 2, ind_style);
+  }
+}
+
+int player_has_shield(void)
+{
+  return player_buffs[PICKUP_SHIELD].active && player_buffs[PICKUP_SHIELD].shield_hits > 0;
+}
+
+int player_get_shield_hits(void)
+{
+  if (!player_buffs[PICKUP_SHIELD].active) return 0;
+  return player_buffs[PICKUP_SHIELD].shield_hits;
+}
+
+int player_shield_absorb(void)
+{
+  if (!player_has_shield()) return 0;
+
+  player_buffs[PICKUP_SHIELD].shield_hits--;
+  shield_flash_timer = SHIELD_FLASH_DURATION;
+
+  if (player_buffs[PICKUP_SHIELD].shield_hits <= 0) {
+    player_buffs[PICKUP_SHIELD].active = 0;
+  }
+  return 1;
+}
+
+float player_get_speed_multiplier(void)
+{
+  if (player_buffs[PICKUP_SPEED].active) return SPEED_BUFF_MULT;
+  return 1.0f;
+}
+
+float player_get_facing_x(void)
+{
+  return player_facing_x;
+}
+
+float player_get_facing_y(void)
+{
+  return player_facing_y;
+}
+
+void player_increase_max_hp(int amount)
+{
+  player_max_hp += amount;
+  player_hp += amount;
+  if (player_hp > player_max_hp) player_hp = player_max_hp;
 }

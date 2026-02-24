@@ -6,8 +6,8 @@
 #include "player_actions.h"
 
 #define MAX_DROPS      16
-#define DROP_SIZE       24.0f
-#define PICKUP_RADIUS  36.0f
+#define DROP_SIZE       30.0f
+#define PICKUP_RADIUS  44.0f
 #define DROP_BOB_SPEED 3.0f
 #define DROP_BOB_AMP   3.0f
 #define ARROW_BOB_SPEED 4.0f
@@ -42,6 +42,44 @@ int drops_has_type(WeaponType_t type)
     if (drops[i].active && drops[i].type == type) return 1;
   }
   return 0;
+}
+
+int drops_find_nearest_health(float x, float y, float search_radius, float* out_x, float* out_y)
+{
+  float best_dist = search_radius + 1.0f;
+  int found = 0;
+  for (int i = 0; i < MAX_DROPS; i++) {
+    if (!drops[i].active || drops[i].type != DROP_HEALTH) continue;
+    float dx = drops[i].x - x;
+    float dy = drops[i].y - y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    if (dist <= search_radius && dist < best_dist) {
+      best_dist = dist;
+      *out_x = drops[i].x;
+      *out_y = drops[i].y;
+      found = 1;
+    }
+  }
+  return found;
+}
+
+void drops_consume_nearest_health(float x, float y, float radius)
+{
+  float best_dist = radius + 1.0f;
+  int best_idx = -1;
+  for (int i = 0; i < MAX_DROPS; i++) {
+    if (!drops[i].active || drops[i].type != DROP_HEALTH) continue;
+    float dx = drops[i].x - x;
+    float dy = drops[i].y - y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    if (dist <= radius && dist < best_dist) {
+      best_dist = dist;
+      best_idx = i;
+    }
+  }
+  if (best_idx >= 0) {
+    drops[best_idx].active = 0;
+  }
 }
 
 void drops_spawn(float x, float y, WeaponType_t type)

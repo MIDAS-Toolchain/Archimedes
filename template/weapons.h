@@ -14,7 +14,7 @@ typedef enum {
 } WeaponType_t;
 
 // Chain lightning constants
-#define CHAIN_MAX_JUMPS       3
+#define CHAIN_MAX_JUMPS       8
 #define CHAIN_DELAY           0.065f   // 65ms between jumps
 #define CHAIN_RADIUS          90.0f
 #define CHAIN_VISUAL_DURATION 0.15f
@@ -38,7 +38,7 @@ typedef struct {
 #define ORBIT_COOLDOWN       5.0f
 #define ORBIT_DURATION       3.0f
 #define ORBIT_RADIUS         60.0f
-#define ORBIT_ORB_SIZE       8.0f
+#define ORBIT_ORB_SIZE       11.0f
 #define ORBIT_HIT_COOLDOWN   0.3f
 #define ORBIT_KNOCKBACK      200.0f
 #define ORBIT_MAX_HIT_TRACK  50
@@ -60,7 +60,7 @@ typedef struct {
 #define BOMB_EXPLOSION_RADIUS 85.0f
 #define BOMB_VISUAL_DURATION  0.25f
 #define BOMB_KNOCKBACK        250.0f
-#define BOMB_MAX_ACTIVE       4
+#define BOMB_MAX_ACTIVE       8
 
 typedef struct {
   float start_x, start_y;

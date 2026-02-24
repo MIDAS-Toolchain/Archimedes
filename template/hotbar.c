@@ -90,6 +90,36 @@ static void draw_cooldown_pie(aRectf_t rect, float progress)
   SDL_SetRenderDrawBlendMode(app.renderer, SDL_BLENDMODE_NONE);
 }
 
+int hotbar_get_slot_count(void)
+{
+  return slot_count;
+}
+
+int hotbar_get_hovered_slot(int mx, int my)
+{
+  if (!hotbar_flex) return -1;
+  for (int i = 0; i < slot_count; i++) {
+    const FlexItem_t* item = a_FlexGetItem(hotbar_flex, i);
+    if (!item) continue;
+    if (mx >= item->calc_x && mx < item->calc_x + item->w &&
+        my >= item->calc_y && my < item->calc_y + item->h)
+      return i;
+  }
+  return -1;
+}
+
+int hotbar_get_slot_rect(int slot, int* out_x, int* out_y, int* out_w, int* out_h)
+{
+  if (!hotbar_flex || slot < 0 || slot >= slot_count) return -1;
+  const FlexItem_t* item = a_FlexGetItem(hotbar_flex, slot);
+  if (!item) return -1;
+  *out_x = item->calc_x;
+  *out_y = item->calc_y;
+  *out_w = item->w;
+  *out_h = item->h;
+  return 0;
+}
+
 void hotbar_draw(void)
 {
   if (!hotbar_flex) return;
