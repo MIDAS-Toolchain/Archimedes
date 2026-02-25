@@ -165,7 +165,7 @@ void a_ViewportInput( aRectf_t* viewport, float width, float height )
 
   }
   
-  if ( app.mouse.button == 1 )
+  if ( app.mouse.button == 2 )
   {
     if ( !panning )
     {
@@ -221,7 +221,6 @@ void a_ViewportInput( aRectf_t* viewport, float width, float height )
       prev_mouse_y = app.mouse.y;
 
     }
-
   }
 
   if ( viewport->x < viewport->w ) viewport->x = viewport->w;

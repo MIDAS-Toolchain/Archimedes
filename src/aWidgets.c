@@ -1487,7 +1487,8 @@ static void DrawInputWidget( aWidget_t* w )
     uint32_t ticks = SDL_GetTicks();
     uint8_t is_visible = ( ticks % 1000 ) < 500;
 
-    if ( handle_input_widget && is_visible )
+    if ( handle_input_widget && is_visible &&
+         strncmp( w->name, app.active_widget->name, MAX_FILENAME_LENGTH ) == 0 )
     {
       aRectf_t cursor_rect = ( aRectf_t ){ .x = ( input->rect.x + text_width ),
                                            .y = ( input->rect.y ),
