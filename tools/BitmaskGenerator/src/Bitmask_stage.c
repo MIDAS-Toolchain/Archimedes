@@ -17,8 +17,10 @@ void Init_Stage( void )
 {
   app.delegate.logic = sLogic;
   app.delegate.draw  = sDraw;
-
-  app.g_viewport = (aRectf_t){ 500.0f, 500.0f, 50.0f, 50.0f };
+  float ratio = SCREEN_WIDTH/SCREEN_HEIGHT;
+  float view_h = 50.0f;
+  float view_w = view_h * ratio;
+  app.g_viewport = (aRectf_t){ 500.0f, 500.0f, view_h, view_w };
   sheet = a_SpriteSheetCreate( "resources/assets/tilemap.png", 32, 32 );
   
   a_WidgetsInit( "resources/load_img_menu.auf" );
@@ -64,11 +66,12 @@ static void sDraw( float dt )
 
   if ( sheet != NULL )
   {
-    aPoint2f_t scale = a_ViewportCalculateScale();
-    int view_x = (int)( app.g_viewport.x - app.g_viewport.w );
-    int view_y = (int)( app.g_viewport.y - app.g_viewport.h );
-    float x = ( 1024 / scale.x ) + view_x;
-    float y = ( 1024 / scale.y ) + view_y;
+    float img_w = ((float)sheet->img_width )/2;
+    float img_h = ((float)sheet->img_height)/2;
+    float world_x = ( SCREEN_WIDTH /2 );
+    float world_y = ( SCREEN_HEIGHT/2 );
+    float x = ( world_x + img_w );
+    float y = ( world_y + img_h );
     a_ViewportBlit( sheet->sheet, x, y );
   }
 }
