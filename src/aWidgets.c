@@ -8,6 +8,7 @@
  *                    Mathew Storm <smattymat@gmail.com>
  */
 
+#include <SDL2/SDL_clipboard.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "Archimedes.h"
@@ -81,50 +82,17 @@ void a_DoWidget( void )
       {
         current->state = WI_HOVERING;
       }
-    }
-
-    /*if ( app.keyboard[SDL_SCANCODE_UP] )
-    {
-      app.keyboard[SDL_SCANCODE_UP] = 0;
-      if ( app.active_widget->prev->hidden == 1 )
+      
+      /*
+      if ( app.keyboard[SDL_SCANCODE_UP] )
       {
-        temp = app.active_widget;
-        while ( temp != NULL && temp->hidden != 1 )
-        {
-          temp = temp->prev;
-        }
-
-        if ( temp != NULL )
-        {
-          app.active_widget = temp;
-
-        }
-
-      }
-
-      else
-      {
-        app.active_widget = app.active_widget->prev;
-      }
-
-      if ( app.active_widget == &widget_head )
-      {
-        app.active_widget = widget_tail;
-      }
-    }
-
-    if ( app.keyboard[SDL_SCANCODE_DOWN] )
-    {
-      app.keyboard[SDL_SCANCODE_DOWN] = 0;
-
-      if ( app.active_widget->next != NULL )
-      {
-        if ( app.active_widget->next->hidden == 1 )
+        app.keyboard[SDL_SCANCODE_UP] = 0;
+        if ( app.active_widget->prev->hidden == 1 )
         {
           temp = app.active_widget;
           while ( temp != NULL && temp->hidden != 1 )
           {
-            temp = temp->next;
+            temp = temp->prev;
           }
 
           if ( temp != NULL )
@@ -132,62 +100,112 @@ void a_DoWidget( void )
             app.active_widget = temp;
 
           }
+
         }
-  
+
         else
-        {
-          app.active_widget = app.active_widget->next;
-        }
-      }
-  
-      else
       {
-        app.active_widget = widget_head.next;
-      }
-
-      if ( app.active_widget == NULL )
-      {
-        app.active_widget = widget_head.next;
-      }
-    }*/
-    if ( app.active_widget->type == WT_SELECT || app.active_widget->type == WT_SLIDER )
-    {
-      if ( app.keyboard[SDL_SCANCODE_LEFT] )
-      {
-        app.keyboard[SDL_SCANCODE_LEFT] = 0;
-        ChangeWidgetValue( -1 );
-      }
-
-      if ( app.keyboard[SDL_SCANCODE_RIGHT] )
-      {
-        app.keyboard[SDL_SCANCODE_RIGHT] = 0;
-        ChangeWidgetValue( 1 );
-      }
-    }
-
-    if ( app.active_widget->type == WT_INPUT || app.active_widget->type == WT_CONTROL )
-    {
-      if ( app.keyboard[SDL_SCANCODE_SPACE] ||
-        app.keyboard[SDL_SCANCODE_RETURN] )
-      { 
-        app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
-
-        if ( app.active_widget->type == WT_INPUT )
-        {
-          cursor_blink = 0;
-          handle_input_widget = 1;
-          memset( app.input_text, 0, sizeof( app.input_text ) );
+          app.active_widget = app.active_widget->prev;
         }
 
-        else if ( app.active_widget->type == WT_CONTROL )
+        if ( app.active_widget == &widget_head )
         {
-          app.last_key_pressed = -1;
-          handle_control_widget = 1;
+          app.active_widget = widget_tail;
+        }
+      }
+
+      if ( app.keyboard[SDL_SCANCODE_DOWN] )
+      {
+        app.keyboard[SDL_SCANCODE_DOWN] = 0;
+
+        if ( app.active_widget->next != NULL )
+        {
+          if ( app.active_widget->next->hidden == 1 )
+          {
+            temp = app.active_widget;
+            while ( temp != NULL && temp->hidden != 1 )
+            {
+              temp = temp->next;
+            }
+
+            if ( temp != NULL )
+            {
+              app.active_widget = temp;
+
+            }
+          }
+
+          else
+        {
+            app.active_widget = app.active_widget->next;
+          }
         }
 
-        else if ( app.active_widget->action != NULL )
+        else
+      {
+          app.active_widget = widget_head.next;
+        }
+
+        if ( app.active_widget == NULL )
         {
-          app.active_widget->action();
+          app.active_widget = widget_head.next;
+        }
+      }
+      */
+
+      if ( app.active_widget->type == WT_SELECT || app.active_widget->type == WT_SLIDER )
+      {
+        if ( app.keyboard[SDL_SCANCODE_LEFT] )
+        {
+          app.keyboard[SDL_SCANCODE_LEFT] = 0;
+          ChangeWidgetValue( -1 );
+        }
+
+        if ( app.keyboard[SDL_SCANCODE_RIGHT] )
+        {
+          app.keyboard[SDL_SCANCODE_RIGHT] = 0;
+          ChangeWidgetValue( 1 );
+        }
+      }
+
+      if ( app.active_widget->type == WT_INPUT || app.active_widget->type == WT_CONTROL )
+      {
+        if ( app.mouse.button == 1 && app.mouse.clicks == 2 &&
+          WithinRange( app.mouse.x, app.mouse.y, current->rect ) )
+        {
+          if ( app.active_widget->type == WT_INPUT )
+          {
+            app.mouse.button = 0;
+            app.mouse.clicks = 0;
+            cursor_blink = 0;
+            handle_input_widget = 1;
+            memset( app.input_text, 0, sizeof( app.input_text ) );
+            return;
+          }
+        }
+
+        if ( app.keyboard[SDL_SCANCODE_SPACE] ||
+          app.keyboard[SDL_SCANCODE_RETURN] )
+        { 
+          app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
+
+          if ( app.active_widget->type == WT_INPUT )
+          {
+            cursor_blink = 0;
+            handle_input_widget = 1;
+            memset( app.input_text, 0, sizeof( app.input_text ) );
+          }
+
+          else if ( app.active_widget->type == WT_CONTROL )
+          {
+            app.last_key_pressed = -1;
+            handle_control_widget = 1;
+          }
+
+          else if ( app.active_widget->action != NULL )
+          {
+            app.active_widget->action();
+          }
         }
       }
     }
@@ -211,6 +229,18 @@ void a_DoWidget( void )
       app.keyboard[A_ESCAPE] = 0;
 
       handle_input_widget = 0;
+    }
+
+    if ( app.keyboard[A_LCTRL] && app.keyboard[A_V] )
+    {
+      app.keyboard[A_LCTRL] = app.keyboard[A_V] = 0;
+      curr_input->text = SDL_GetClipboardText();
+    }
+    
+    if ( app.keyboard[A_LCTRL] && app.keyboard[A_C] )
+    {
+      app.keyboard[A_LCTRL] = app.keyboard[A_V] = 0;
+      SDL_SetClipboardText( curr_input->text );
     }
     
     if( app.mouse.button == 1 && 
