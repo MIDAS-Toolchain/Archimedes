@@ -5,6 +5,7 @@ void collision_init(int max_enemies);
 void collision_cleanup(void);
 void collision_begin_death_tracking(void);
 void collision_check_bullets(void);
+void collision_check_turret_bullets(void);
 void collision_resolve_deaths(void);
 
 #endif /* COLLISION_H */

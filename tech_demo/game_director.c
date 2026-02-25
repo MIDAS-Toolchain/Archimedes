@@ -7,6 +7,8 @@
 #include "weapons.h"
 #include "drops.h"
 #include "player_actions.h"
+#include "snake.h"
+#include "save_data.h"
 
 // ============================================================================
 // Difficulty Scaling
@@ -135,10 +137,10 @@ static void check_timed_weapon_drops(void)
 
     timed_drops[i].dropped = 1;
 
-    WeaponType_t pool[5];
+    WeaponType_t pool[7];
     int pool_count = 0;
-    WeaponType_t all_weapons[] = {WEAPON_WAND, WEAPON_SPIN, WEAPON_CHAIN, WEAPON_ORBIT, WEAPON_BOMB};
-    for (int w = 0; w < 5; w++) {
+    WeaponType_t all_weapons[] = {WEAPON_WAND, WEAPON_SPIN, WEAPON_CHAIN, WEAPON_ORBIT, WEAPON_BOMB, WEAPON_TURRET, WEAPON_TRAIL};
+    for (int w = 0; w < 7; w++) {
       if (!weapons_has(all_weapons[w]) && !drops_has_type(all_weapons[w]))
         pool[pool_count++] = all_weapons[w];
     }
@@ -152,12 +154,7 @@ static void check_timed_weapon_drops(void)
         wx = RANDF(40, SCREEN_WIDTH - 40);
         wy = RANDF(40, SCREEN_HEIGHT - 40);
       } while (sqrtf((wx - px) * (wx - px) + (wy - py) * (wy - py)) < 150.0f);
-      printf("%.0fs weapon drop: type=%d at (%.0f, %.0f) pool_count=%d\n",
-             timed_drops[i].trigger_time, chosen, wx, wy, pool_count);
       drops_spawn(wx, wy, chosen);
-    } else {
-      printf("%.0fs weapon drop: pool empty, player already has all weapons\n",
-             timed_drops[i].trigger_time);
     }
   }
 }
@@ -168,6 +165,23 @@ static void check_timed_weapon_drops(void)
 
 #define HEALTH_DROP_INTERVAL 10.0f
 static float health_drop_timer = 0.0f;
+
+// Snake boss spawn schedule
+static int snake_discovered_this_run = 0;
+static int snake_spawn_count = 0;
+#define SNAKE_FIRST_SPAWN_TIME  120.0f
+#define SNAKE_SPAWN_INTERVAL_T  120.0f
+static float next_snake_time = SNAKE_FIRST_SPAWN_TIME;
+
+// Beholder spawn schedule
+static float next_beholder_time = 2.0f;
+static int beholder_spawn_count = 0;
+static int beholder_discovered_this_run = 0;
+#define BEHOLDER_FIRST_SPAWN_TIME 150.0f
+#define BEHOLDER_SPAWN_INTERVAL   60.0f
+#define BEHOLDER_DIR_BASE_SHIELD  3
+#define BEHOLDER_DIR_SHIELD_GROWTH 2
+#define BEHOLDER_DIR_BASE_HP      8
 
 // ============================================================================
 // Public API
@@ -187,6 +201,13 @@ void director_init(void)
   for (int i = 0; i < TIMED_DROP_COUNT; i++) {
     timed_drops[i].dropped = 0;
   }
+  snake_spawn_count = 0;
+  snake_discovered_this_run = 0;
+  next_snake_time = SNAKE_FIRST_SPAWN_TIME;
+
+  next_beholder_time = 2.0f;
+  beholder_spawn_count = 0;
+  beholder_discovered_this_run = 0;
 }
 
 void director_reset(void)
@@ -227,6 +248,39 @@ void director_update(float dt)
     }
 
     enemy_spawn(spawn_x, spawn_y, pick_enemy_type(), get_speed_mult(), get_hp_bonus());
+  }
+
+  // Snake boss spawn (every 120s starting at 120s)
+  if (game_elapsed_timer >= next_snake_time) {
+    if (!snake_discovered_this_run) {
+      snake_discovered_this_run = 1;
+      if (!save_data_get_int("snake_discovered", 0)) {
+        save_data_set_int("snake_discovered", 1);
+        save_data_flush();
+      }
+    }
+    int n = snake_spawn_count + 1;
+    int seg_count = 6 + 2 * (n - 1);
+    int seg_hp = 3 + get_hp_bonus();
+    snake_spawn(seg_count, seg_hp);
+    snake_spawn_count++;
+    next_snake_time += SNAKE_SPAWN_INTERVAL_T;
+  }
+
+  // Beholder spawn (every 60s starting at 150s)
+  if (game_elapsed_timer >= next_beholder_time) {
+    if (!beholder_discovered_this_run) {
+      beholder_discovered_this_run = 1;
+      if (!save_data_get_int("beholder_discovered", 0)) {
+        save_data_set_int("beholder_discovered", 1);
+        save_data_flush();
+      }
+    }
+    int shield = BEHOLDER_DIR_BASE_SHIELD + BEHOLDER_DIR_SHIELD_GROWTH * beholder_spawn_count;
+    int hp = BEHOLDER_DIR_BASE_HP + get_hp_bonus();
+    beholder_spawn(hp, shield);
+    beholder_spawn_count++;
+    next_beholder_time += BEHOLDER_SPAWN_INTERVAL;
   }
 
   // Timed weapon drops

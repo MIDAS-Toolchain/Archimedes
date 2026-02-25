@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "Archimedes.h"
 #include "blood.h"
+#include "progress.h"
 
 #define BLOOD_SPILL_DURATION 0.2f
 #define BLOOD_PARTICLE_SIZE  3.0f
@@ -15,6 +16,7 @@ typedef struct {
   float x, y;
   float vx, vy;
   float lifetime;
+  float max_lifetime;   // 0 = use default from progress
   int active;
   int frozen;
 } BloodParticle_t;
@@ -72,6 +74,37 @@ void blood_spawn(float x, float y, float dir_x, float dir_y, float entity_radius
         particles[j].vy = (dir_x * s + dir_y * c) * speed;
 
         particles[j].lifetime = 0.0f;
+        particles[j].max_lifetime = 0.0f;
+        particles[j].active = 1;
+        particles[j].frozen = 0;
+        break;
+      }
+    }
+  }
+}
+
+void blood_spawn_short(float x, float y, float dir_x, float dir_y,
+                       float entity_radius, float lifetime)
+{
+  int count = BLOOD_MIN_PARTICLES + (rand() % (BLOOD_MAX_PARTICLES - BLOOD_MIN_PARTICLES + 1));
+  normalize(&dir_x, &dir_y);
+
+  for (int i = 0; i < count; i++) {
+    for (int j = 0; j < max_particles; j++) {
+      if (!particles[j].active) {
+        float offset = RANDF(12.0f, 24.0f);
+        particles[j].x = x + entity_radius + dir_x * offset;
+        particles[j].y = y + entity_radius + dir_y * offset;
+
+        float speed = RANDF(150.0f, 400.0f);
+        float angle = RANDF(-PI * 0.6f, PI * 0.6f);
+        float c = cosf(angle);
+        float s = sinf(angle);
+        particles[j].vx = (dir_x * c - dir_y * s) * speed;
+        particles[j].vy = (dir_x * s + dir_y * c) * speed;
+
+        particles[j].lifetime = 0.0f;
+        particles[j].max_lifetime = lifetime;
         particles[j].active = 1;
         particles[j].frozen = 0;
         break;
@@ -88,7 +121,8 @@ void blood_update(float dt)
 
     p->lifetime += dt;
 
-    if (p->lifetime >= BLOOD_LIFETIME) {
+    float blood_life = (p->max_lifetime > 0.0f) ? p->max_lifetime : progress_get_blood_lifetime();
+    if (p->lifetime >= blood_life) {
       p->active = 0;
       continue;
     }
@@ -120,8 +154,11 @@ void blood_draw(void)
     if (!p->active) continue;
 
     int alpha = 255;
-    if (p->lifetime > BLOOD_FADE_START) {
-      float fade = (p->lifetime - BLOOD_FADE_START) / (BLOOD_LIFETIME - BLOOD_FADE_START);
+    float blood_life = (p->max_lifetime > 0.0f) ? p->max_lifetime : progress_get_blood_lifetime();
+    float blood_fade = blood_life - 2.0f;
+    if (blood_fade < 0.0f) blood_fade = 0.0f;
+    if (p->lifetime > blood_fade) {
+      float fade = (p->lifetime - blood_fade) / (blood_life - blood_fade);
       alpha = (int)(255 * (1.0f - fade));
       if (alpha < 0) alpha = 0;
     }

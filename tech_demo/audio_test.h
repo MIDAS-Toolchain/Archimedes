@@ -33,4 +33,6 @@ void audio_test_draw(void);
  */
 void audio_test_cleanup(void);
 
+void audio_restart_music(void);
+
 #endif // AUDIO_TEST_H

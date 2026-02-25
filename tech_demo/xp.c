@@ -6,6 +6,7 @@
 #include "enemy.h"
 #include "game_audio.h"
 #include "stats.h"
+#include "progress.h"
 
 #define MAX_XP_ORBS       300
 #define XP_MAGNET_RADIUS  144.0f
@@ -29,12 +30,19 @@ static XpOrb_t orbs[MAX_XP_ORBS];
 static int current_xp = 0;
 static int current_level = 0;
 static int pending_level_up = 0;
+static int pending_upgrade_points = 0;
 
 static int xp_needed_for_level(int level)
 {
+  int base;
   if (level < XP_MAX_LEVEL)
-    return xp_table[level];
-  return (int)floorf(5.0f + 1.5f * (float)(level + 1) * (float)(level + 1));
+    base = xp_table[level];
+  else
+    base = (int)floorf(5.0f + 1.5f * (float)(level + 1) * (float)(level + 1));
+  int reduction = global_get_xp_reduction();
+  base -= reduction;
+  if (base < 3) base = 3;
+  return base;
 }
 
 void xp_init(void)
@@ -44,6 +52,7 @@ void xp_init(void)
   current_xp = 0;
   current_level = 0;
   pending_level_up = 0;
+  pending_upgrade_points = 0;
 }
 
 void xp_reset(void)
@@ -57,6 +66,7 @@ void xp_spawn_orbs(float death_x, float death_y, int enemy_type)
   if (enemy_type == ENEMY_TYPE_DASHER) count = 2;
   else if (enemy_type == ENEMY_TYPE_BRUTE) count = 5;
   else if (enemy_type == ENEMY_TYPE_SHAMAN) count = 3;
+  else if (enemy_type == ENEMY_TYPE_BEHOLDER) count = 5;
 
   for (int i = 0; i < count; i++) {
     for (int j = 0; j < MAX_XP_ORBS; j++) {
@@ -86,8 +96,8 @@ void xp_update(float dt)
     float dy = py - orbs[i].y;
     float dist = sqrtf(dx * dx + dy * dy);
 
-    // Collect
-    if (dist < XP_COLLECT_DIST) {
+    // Collect (not while dead)
+    if (dist < XP_COLLECT_DIST && player_is_alive()) {
       orbs[i].active = 0;
       current_xp += orbs[i].value;
       stats_add_score(1);
@@ -98,6 +108,7 @@ void xp_update(float dt)
       while (current_xp >= needed) {
         current_xp -= needed;
         current_level++;
+        pending_upgrade_points += current_level;
         player_increase_max_hp(10);
         pending_level_up = 1;
         game_audio_play_levelup();
@@ -106,9 +117,10 @@ void xp_update(float dt)
       continue;
     }
 
-    // Magnet pull
-    if (dist < XP_MAGNET_RADIUS && dist > 0.1f) {
-      float pull = XP_MAGNET_SPEED * (1.0f - dist / XP_MAGNET_RADIUS);
+    // Magnet pull (not while dead)
+    float magnet_r = XP_MAGNET_RADIUS + global_get_xp_magnet_bonus();
+    if (dist < magnet_r && dist > 0.1f && player_is_alive()) {
+      float pull = XP_MAGNET_SPEED * (1.0f - dist / magnet_r);
       float nx = dx / dist;
       float ny = dy / dist;
       orbs[i].x += nx * pull * dt;
@@ -122,22 +134,37 @@ void xp_draw(void)
   for (int i = 0; i < MAX_XP_ORBS; i++) {
     if (!orbs[i].active) continue;
 
+    int ox = (int)orbs[i].x;
+    int oy = (int)orbs[i].y;
+
     float pulse = sinf(orbs[i].pulse_age * 6.0f);
     int alpha = 180 + (int)(75.0f * pulse);
     if (alpha > 255) alpha = 255;
     if (alpha < 140) alpha = 140;
 
-    // Glow (larger, more transparent)
-    a_DrawFilledCircle(
-      (int)orbs[i].x, (int)orbs[i].y, XP_ORB_VISUAL_R + 2,
-      (aColor_t){180, 255, 180, (uint8_t)(alpha / 3)}
-    );
+    // Glow diamond (slightly larger, transparent)
+    int ga = alpha / 4;
+    SDL_SetRenderDrawBlendMode(app.renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(app.renderer, 180, 255, 180, (uint8_t)ga);
+    {
+      int half = 4;
+      for (int dy = -half; dy <= half; dy++) {
+        int w = half - abs(dy);
+        SDL_Rect row = { ox - w, oy + dy, w * 2 + 1, 1 };
+        SDL_RenderFillRect(app.renderer, &row);
+      }
+    }
 
-    // Core orb
-    a_DrawFilledCircle(
-      (int)orbs[i].x, (int)orbs[i].y, XP_ORB_VISUAL_R,
-      (aColor_t){200, 255, 200, (uint8_t)alpha}
-    );
+    // Core diamond
+    SDL_SetRenderDrawColor(app.renderer, 200, 255, 200, (uint8_t)alpha);
+    {
+      int half = XP_ORB_VISUAL_R;
+      for (int dy = -half; dy <= half; dy++) {
+        int w = half - abs(dy);
+        SDL_Rect row = { ox - w, oy + dy, w * 2 + 1, 1 };
+        SDL_RenderFillRect(app.renderer, &row);
+      }
+    }
   }
 }
 
@@ -153,6 +180,16 @@ float xp_get_level_progress(void)
   return (float)current_xp / (float)needed;
 }
 
+int xp_get_current(void)
+{
+  return current_xp;
+}
+
+int xp_get_needed(void)
+{
+  return xp_needed_for_level(current_level);
+}
+
 int xp_check_level_up(void)
 {
   if (pending_level_up) {
@@ -160,4 +197,9 @@ int xp_check_level_up(void)
     return 1;
   }
   return 0;
+}
+
+int xp_get_pending_upgrade_points(void)
+{
+  return pending_upgrade_points;
 }

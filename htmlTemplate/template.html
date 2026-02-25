@@ -2,158 +2,16 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Archimedes Tech Demo</title>
   <style>
-    .powered-by-emscripten {
-      display: none;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      background-color: #0a0a0a;
-      color: #d0d0d0;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      line-height: 1.6;
-    }
-
-    .container {
-      max-width: 1320px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-
-    h1 {
-      text-align: center;
-      color: #e0e0e0;
-      font-size: 1.8rem;
-      letter-spacing: 0.1em;
-      margin-bottom: 16px;
-      text-transform: uppercase;
-    }
-
-    .canvas-wrap {
-      text-align: center;
-      margin-bottom: 24px;
-    }
-
-    #canvas {
-      display: block;
-      margin: 0 auto;
-      border: 1px solid #222;
-    }
-
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
-      margin-top: 8px;
-    }
-
-    .info-section {
-      background: #141414;
-      border: 1px solid #222;
-      border-radius: 6px;
-      padding: 16px;
-    }
-
-    .info-section h2 {
-      color: #c0c0c0;
-      font-size: 1rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 10px;
-      border-bottom: 1px solid #2a2a2a;
-      padding-bottom: 6px;
-    }
-
-    .info-section p {
-      font-size: 0.85rem;
-      color: #aaa;
-    }
-
-    .hotkey-list {
-      list-style: none;
-      font-size: 0.85rem;
-    }
-
-    .hotkey-list li {
-      margin-bottom: 4px;
-      color: #aaa;
-    }
-
-    .hotkey-list kbd {
-      background: #222;
-      border: 1px solid #333;
-      border-radius: 3px;
-      padding: 1px 5px;
-      font-family: monospace;
-      font-size: 0.8rem;
-      color: #ddd;
-    }
-
-    .enemy-list {
-      list-style: none;
-      font-size: 0.85rem;
-    }
-
-    .enemy-list li {
-      margin-bottom: 6px;
-      color: #aaa;
-    }
-
-    .enemy-list strong {
-      color: #ccc;
-    }
-
-    @media (max-width: 700px) {
-      .info-grid {
-        grid-template-columns: 1fr;
-      }
-    }
+    .powered-by-emscripten { display: none; }
+    * { margin: 0; padding: 0; }
+    body { background: #000; overflow: hidden; }
+    #canvas { display: block; width: 100vw; height: 100vh; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Archimedes Tech Demo</h1>
-    <div class="canvas-wrap">
-      <canvas id="canvas"></canvas>
-    </div>
-    <div class="info-grid">
-      <div class="info-section">
-        <h2>Game Summary</h2>
-        <p>Roguelike wave-survival game. Survive 15 minutes against escalating waves. Defeat enemies for XP, level up to choose upgrades across 5 weapon types: Wand, Spin, Chain, Orbit, and Bomb. Collect power pickups like Fire Cone, Speed, and Shield to turn the tide.</p>
-      </div>
-      <div class="info-section">
-        <h2>Hotkeys</h2>
-        <ul class="hotkey-list">
-          <li><kbd>WASD</kbd> / <kbd>Arrow Keys</kbd> &mdash; Move</li>
-          <li><kbd>Shift</kbd> &mdash; Dash (3s cooldown, grants invincibility)</li>
-          <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> &mdash; Quick-select level-up cards</li>
-          <li><kbd>Enter</kbd> / <kbd>Space</kbd> &mdash; Confirm selection</li>
-          <li><kbd>ESC</kbd> &mdash; Pause</li>
-          <li><kbd>Ctrl+T</kbd> &mdash; Text test scene</li>
-          <li><kbd>Ctrl+M</kbd> &mdash; Audio test scene</li>
-        </ul>
-      </div>
-      <div class="info-section">
-        <h2>Enemy Types</h2>
-        <ul class="enemy-list">
-          <li><strong>Grunt</strong> &mdash; Standard enemy, moderate speed/health. Flanks and circles the player.</li>
-          <li><strong>Dasher</strong> &mdash; Fast, telegraphed charge attack with red indicator. Spawns after 30s.</li>
-          <li><strong>Brute</strong> &mdash; Slow but tanky (12 HP), high damage. Enrages when damaged. Steals health/power pickups. Spawns after 90s.</li>
-        </ul>
-      </div>
-    </div>
-    <footer style="text-align:center; margin-top:24px; padding:12px 0; border-top:1px solid #222; color:#666; font-size:0.8rem;">
-      This is a tech demo test for the <a href="https://github.com/McCoy1701/Archimedes" style="color:#888; text-decoration:underline;">Archimedes Game Engine</a>
-    </footer>
-  </div>
+  <canvas id="canvas"></canvas>
   <script>
     var Module = {
         canvas: (function() {

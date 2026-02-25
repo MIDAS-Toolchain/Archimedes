@@ -257,3 +257,10 @@ void audio_test_cleanup(void)
   printf("Audio test cleanup complete\n");
   audio_initialized = 0;
 }
+
+void audio_restart_music(void)
+{
+  if (!audio_initialized) return;
+  a_AudioPlayMusic(&g_bgm, -1, 0);
+  a_AudioSetMusicVolume(app.audio.music_volume);
+}

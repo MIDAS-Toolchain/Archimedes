@@ -5,6 +5,7 @@
 #include "hotbar.h"
 #include "player_actions.h"
 #include "stats.h"
+#include "progress.h"
 
 #define MAX_DROPS      16
 #define DROP_SIZE       30.0f
@@ -25,12 +26,17 @@ typedef struct {
 static Drop_t drops[MAX_DROPS];
 static aSoundEffect_t heal_sound;
 static int heal_sound_loaded = 0;
+static WeaponType_t last_weapon_picked = WEAPON_NONE;
+
+WeaponType_t drops_get_last_weapon_picked(void) { return last_weapon_picked; }
+void drops_clear_last_weapon_picked(void) { last_weapon_picked = WEAPON_NONE; }
 
 void drops_init(void)
 {
   for (int i = 0; i < MAX_DROPS; i++) {
     drops[i].active = 0;
   }
+  last_weapon_picked = WEAPON_NONE;
 
   if (a_AudioLoadSound("resources/soundEffects/heal.wav", &heal_sound) == 0) {
     heal_sound_loaded = 1;
@@ -112,14 +118,14 @@ void drops_update(float dt)
     float dy = (drops[i].y + DROP_SIZE / 2) - py;
     float dist = sqrtf(dx * dx + dy * dy);
 
-    if (dist < PICKUP_RADIUS) {
+    if (dist < PICKUP_RADIUS && player_is_alive()) {
       if (drops[i].type == DROP_HEALTH) {
-        player_heal(10);
+        player_heal(10 + global_get_health_pickup_bonus());
         stats_add_score(2);
         drops[i].active = 0;
         if (heal_sound_loaded) {
           aAudioOptions_t opts = {
-            .channel = AUDIO_CHANNEL_PLAYER,
+            .channel = AUDIO_CHANNEL_AUTO,
             .volume = 80,
             .loops = 0,
             .fade_ms = 0,
@@ -131,6 +137,7 @@ void drops_update(float dt)
         int slot = weapons_add(drops[i].type);
         if (slot >= 0) {
           hotbar_add_slot();
+          last_weapon_picked = drops[i].type;
           drops[i].active = 0;
         }
       }
@@ -146,7 +153,6 @@ static void draw_heart(int cx, int cy, int size, aColor_t color)
 
   // Two filled circles for the top bumps
   int r = size / 2;
-  int r2 = r * r;
   // Left bump center
   int lx = cx - r;
   int ly = cy;
@@ -154,17 +160,16 @@ static void draw_heart(int cx, int cy, int size, aColor_t color)
   int rx = cx + r;
   int ry = cy;
 
-  for (int pdy = -r; pdy <= r; pdy++) {
-    for (int pdx = -r; pdx <= r; pdx++) {
-      if (pdx * pdx + pdy * pdy <= r2) {
-        SDL_RenderDrawPoint(app.renderer, lx + pdx, ly + pdy);
-        SDL_RenderDrawPoint(app.renderer, rx + pdx, ry + pdy);
-      }
-    }
+  // Scanline circles for left and right bumps
+  for (int dy = -r; dy <= r; dy++) {
+    int dx = (int)sqrtf((float)(r * r - dy * dy));
+    SDL_Rect left_row  = { lx - dx, ly + dy, dx * 2 + 1, 1 };
+    SDL_Rect right_row = { rx - dx, ry + dy, dx * 2 + 1, 1 };
+    SDL_RenderFillRect(app.renderer, &left_row);
+    SDL_RenderFillRect(app.renderer, &right_row);
   }
 
   // Triangle: from circle centers down to a point
-  // Top matches the widest span of the two circles: cx-2r to cx+2r
   int tri_top = cy;
   int tri_bot = cy + size + r;
   int tri_half_w = 2 * r;
@@ -172,9 +177,8 @@ static void draw_heart(int cx, int cy, int size, aColor_t color)
   for (int y = tri_top; y <= tri_bot; y++) {
     float t = (float)(y - tri_top) / (float)(tri_bot - tri_top);
     int half_w = (int)(tri_half_w * (1.0f - t));
-    for (int x = cx - half_w; x <= cx + half_w; x++) {
-      SDL_RenderDrawPoint(app.renderer, x, y);
-    }
+    SDL_Rect tri_row = { cx - half_w, y, half_w * 2 + 1, 1 };
+    SDL_RenderFillRect(app.renderer, &tri_row);
   }
 
   SDL_SetRenderDrawBlendMode(app.renderer, SDL_BLENDMODE_NONE);
@@ -238,6 +242,16 @@ void drops_draw(void)
         glow_color = (aColor_t){255, 180, 50, (uint8_t)glow_a};
         label = "BOMB";
         break;
+      case WEAPON_TURRET:
+        color = (aColor_t){255, 180, 50, 255};
+        glow_color = (aColor_t){255, 180, 50, (uint8_t)glow_a};
+        label = "TRRT";
+        break;
+      case WEAPON_TRAIL:
+        color = (aColor_t){255, 120, 30, 255};
+        glow_color = (aColor_t){255, 120, 30, (uint8_t)glow_a};
+        label = "FIRE";
+        break;
       case DROP_HEALTH:
         color = (aColor_t){220, 30, 30, 255};
         glow_color = (aColor_t){220, 30, 30, (uint8_t)glow_a};
@@ -253,15 +267,33 @@ void drops_draw(void)
     float draw_x = drops[i].x - DROP_SIZE / 2;
     float draw_y = drops[i].y - DROP_SIZE / 2 + bob;
 
+    // Neon glow — concentric layers radiating outward
+    float neon_pulse = 0.7f + 0.3f * sinf(drops[i].age * GLOW_PULSE_SPEED);
+
     aRectf_t r;
     if (is_health) {
-      // Draw a red heart instead of a square
       int hcx = (int)(drops[i].x);
       int hcy = (int)(drops[i].y + bob);
-      draw_heart(hcx, hcy, 8, glow_color);  // glow heart behind
-      draw_heart(hcx, hcy, 6, color);        // solid heart
+      // Heart-shaped neon glow
+      for (int g = 3; g >= 1; g--) {
+        int na = (int)(25.0f * neon_pulse / (float)g);
+        aColor_t nc = { color.r, color.g, color.b, (uint8_t)na };
+        draw_heart(hcx, hcy, 6 + g * 5, nc);
+      }
+      draw_heart(hcx, hcy, 9, glow_color);  // glow heart behind
+      draw_heart(hcx, hcy, 7, color);        // solid heart
       r = (aRectf_t){ draw_x, draw_y, DROP_SIZE, DROP_SIZE };
     } else {
+      // Rect neon glow for weapons
+      for (int g = 3; g >= 1; g--) {
+        float pad = (float)g * 6.0f;
+        int na = (int)(25.0f * neon_pulse / (float)g);
+        aColor_t nc = { color.r, color.g, color.b, (uint8_t)na };
+        a_DrawFilledRect(
+          (aRectf_t){ draw_x - pad, draw_y - pad, DROP_SIZE + pad * 2, DROP_SIZE + pad * 2 },
+          nc
+        );
+      }
       // Pulsing glow behind the drop (larger rect)
       aRectf_t glow_rect = { draw_x - 4, draw_y - 4, DROP_SIZE + 8, DROP_SIZE + 8 };
       a_DrawFilledRect(glow_rect, glow_color);
@@ -295,6 +327,6 @@ void drops_draw(void)
       .align = TEXT_ALIGN_CENTER,
       .scale = 0.45f
     };
-    a_DrawText(is_health ? "HEAL" : "PICK UP", arrow_x, arrow_y - 28, pickup_style);
+    a_DrawText(is_health ? "HEAL" : "WEAPON", arrow_x, arrow_y - 28, pickup_style);
   }
 }
