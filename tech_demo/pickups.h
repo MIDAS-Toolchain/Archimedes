@@ -17,6 +17,14 @@ typedef struct {
   float age;            // counts up for bob animation
 } Pickup_t;
 
+// Shared buff constants (used by both player and brutes)
+#define BUFF_FIRE_CONE_DURATION  4.0f
+#define BUFF_SPEED_DURATION      4.0f
+#define BUFF_SPEED_MULT          1.5f
+#define BUFF_SHIELD_HITS         3    // hits per pickup
+#define BUFF_SHIELD_PLAYER_CAP   3    // max hits player can hold (upgradable later)
+#define BUFF_SLOW_AURA_DURATION  4.0f
+
 // Buff struct (used by both player and brutes)
 typedef struct {
   int active;

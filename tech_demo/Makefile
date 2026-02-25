@@ -27,26 +27,6 @@ EMSCRIP_C_FLAGS = -std=c99 -Wall -Wextra $(CINC) $(EFLAGS)
 # SOURCE FILES
 # ====================================================================
 
-ARCHIMEDES_SRCS = \
-    a2DWorld.c \
-    aAnimation.c \
-    aAudio.c \
-    aAUF.c \
-    aAUFParser.c \
-    aDeltaTime.c \
-    aDraw.c \
-    aImage.c \
-    aInitialize.c \
-    aInput.c \
-    aLayout.c \
-    aSpriteSheet.c \
-    aText.c \
-    aTileBitmask.c \
-    aTimer.c \
-    aUtils.c \
-    aViewport.c \
-    aWidgets.c
-
 DEMO_SRCS = \
     player_actions.c \
     test_text.c \
@@ -64,14 +44,17 @@ DEMO_SRCS = \
     xp.c \
     upgrades.c \
     fire_particles.c \
-    stats.c
+    stats.c \
+    progress.c \
+    save_data.c \
+    snake.c \
+    menu.c
 
 # ====================================================================
 # OBJECT FILES
 # ====================================================================
 
-# Native: engine + demo compiled together
-NATIVE_ENGINE_OBJS = $(patsubst %.c, $(OBJ_DIR_NATIVE)/%.o, $(ARCHIMEDES_SRCS))
+# Native: demo objects, engine linked as shared library
 NATIVE_DEMO_OBJS   = $(patsubst %.c, $(OBJ_DIR_NATIVE)/%.o, $(DEMO_SRCS))
 NATIVE_MAIN_OBJ    = $(OBJ_DIR_NATIVE)/n_main.o
 
@@ -103,10 +86,6 @@ $(INDEX_DIR):
 # NATIVE COMPILATION
 # ====================================================================
 
-# Engine sources -> native objects
-$(OBJ_DIR_NATIVE)/%.o: $(ENGINE_SRC)/%.c | $(OBJ_DIR_NATIVE)
-	$(CC) -c $< -o $@ $(NATIVE_C_FLAGS)
-
 # Demo sources -> native objects
 $(OBJ_DIR_NATIVE)/%.o: %.c | $(OBJ_DIR_NATIVE)
 	$(CC) -c $< -o $@ $(NATIVE_C_FLAGS)
@@ -129,8 +108,8 @@ $(OBJ_DIR_EM)/em_main.o: main.c | $(OBJ_DIR_EM)
 # LINKING
 # ====================================================================
 
-$(BIN_DIR)/native: $(NATIVE_ENGINE_OBJS) $(NATIVE_DEMO_OBJS) $(NATIVE_MAIN_OBJ) | $(BIN_DIR)
-	$(CC) $^ -o $@ $(NATIVE_C_FLAGS) $(LDLIBS)
+$(BIN_DIR)/native: $(NATIVE_DEMO_OBJS) $(NATIVE_MAIN_OBJ) | $(BIN_DIR)
+	$(CC) $^ -o $@ $(NATIVE_C_FLAGS) $(LDLIBS) -L../bin -lArchimedes -Wl,-rpath,'$$ORIGIN/../../bin'
 
 $(INDEX_DIR)/index: $(EM_MAIN_OBJ) $(EM_DEMO_OBJS) ../bin/libArchimedes.a | $(INDEX_DIR)
 	$(ECC) $^ -s WASM=1 $(EFLAGS) --shell-file ../htmlTemplate/template.html --preload-file resources/@resources/ -o $@.html

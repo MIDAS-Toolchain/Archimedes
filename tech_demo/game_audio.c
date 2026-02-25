@@ -18,6 +18,22 @@ static int coin_sounds_loaded = 0;
 static int coin_last_played = -1;
 static aSoundEffect_t levelup_sound;
 static int levelup_loaded = 0;
+static aMusic_t bgm;
+static int bgm_loaded = 0;
+
+static aSoundEffect_t beholder_windup_sound;
+static int beholder_windup_loaded = 0;
+static aSoundEffect_t beholder_beam_sound;
+static int beholder_beam_loaded = 0;
+static aSoundEffect_t beholder_shield_hit_sound;
+static int beholder_shield_hit_loaded = 0;
+static aSoundEffect_t beholder_shield_break_sound;
+static int beholder_shield_break_loaded = 0;
+static aSoundEffect_t beholder_health_hit_sound;
+static int beholder_health_hit_loaded = 0;
+static aSoundEffect_t beholder_death_sound;
+static int beholder_death_loaded = 0;
+#define AUDIO_CHANNEL_BEHOLDER_BEAM 5
 
 void game_audio_init(void)
 {
@@ -73,6 +89,29 @@ void game_audio_init(void)
 
   if (a_AudioLoadSound("resources/soundEffects/levelup.wav", &levelup_sound) == 0) {
     levelup_loaded = 1;
+  }
+
+  if (a_AudioLoadMusic("resources/music/calm_bgm.wav", &bgm) == 0) {
+    bgm_loaded = 1;
+  }
+
+  if (a_AudioLoadSound("resources/soundEffects/beholderwindup.wav", &beholder_windup_sound) == 0) {
+    beholder_windup_loaded = 1;
+  }
+  if (a_AudioLoadSound("resources/soundEffects/beholderbeam.wav", &beholder_beam_sound) == 0) {
+    beholder_beam_loaded = 1;
+  }
+  if (a_AudioLoadSound("resources/soundEffects/beholdershieldhit.wav", &beholder_shield_hit_sound) == 0) {
+    beholder_shield_hit_loaded = 1;
+  }
+  if (a_AudioLoadSound("resources/soundEffects/beholdershieldbreak.wav", &beholder_shield_break_sound) == 0) {
+    beholder_shield_break_loaded = 1;
+  }
+  if (a_AudioLoadSound("resources/soundEffects/beholderhealthhit.wav", &beholder_health_hit_sound) == 0) {
+    beholder_health_hit_loaded = 1;
+  }
+  if (a_AudioLoadSound("resources/soundEffects/beholderdeath.wav", &beholder_death_sound) == 0) {
+    beholder_death_loaded = 1;
   }
 }
 
@@ -134,4 +173,94 @@ void game_audio_play_fire_hit(void)
     .loops = 0, .fade_ms = 0, .interrupt = 0
   };
   a_AudioPlaySound(&fire_hit_sound, &opts);
+}
+
+void game_audio_start_music(void)
+{
+  if (!bgm_loaded) return;
+  a_AudioPlayMusic(&bgm, -1, 0);
+  a_AudioSetMusicVolume(app.audio.music_volume);
+}
+
+void game_audio_restart_music(void)
+{
+  if (!bgm_loaded) return;
+  a_AudioPlayMusic(&bgm, -1, 0);
+  a_AudioSetMusicVolume(app.audio.music_volume);
+}
+
+int game_audio_play_beholder_windup(void)
+{
+  if (!beholder_windup_loaded) return -1;
+  aAudioOptions_t opts = {
+    .channel = AUDIO_CHANNEL_AUTO,
+    .volume = 80,
+    .loops = 0, .fade_ms = 0, .interrupt = 0
+  };
+  return a_AudioPlaySound(&beholder_windup_sound, &opts);
+}
+
+void game_audio_stop_beholder_windup(int channel)
+{
+  if (channel >= 0) a_AudioHaltChannel(channel);
+}
+
+void game_audio_play_beholder_beam(void)
+{
+  if (!beholder_beam_loaded) return;
+  aAudioOptions_t opts = {
+    .channel = AUDIO_CHANNEL_BEHOLDER_BEAM,
+    .volume = 72,
+    .loops = 0, .fade_ms = 0, .interrupt = 1
+  };
+  a_AudioPlaySound(&beholder_beam_sound, &opts);
+}
+
+void game_audio_stop_beholder_beam(void)
+{
+  a_AudioHaltChannel(AUDIO_CHANNEL_BEHOLDER_BEAM);
+}
+
+void game_audio_play_beholder_shield_hit(void)
+{
+  if (!beholder_shield_hit_loaded) return;
+  aAudioOptions_t opts = {
+    .channel = AUDIO_CHANNEL_ENEMY,
+    .volume = 40,
+    .loops = 0, .fade_ms = 0, .interrupt = 0
+  };
+  a_AudioPlaySound(&beholder_shield_hit_sound, &opts);
+}
+
+void game_audio_play_beholder_shield_break(void)
+{
+  if (!beholder_shield_break_loaded) return;
+  aAudioOptions_t opts = {
+    .channel = AUDIO_CHANNEL_AUTO,
+    .volume = 48,
+    .loops = 0, .fade_ms = 0, .interrupt = 0
+  };
+  a_AudioPlaySound(&beholder_shield_break_sound, &opts);
+}
+
+void game_audio_play_beholder_health_hit(void)
+{
+  if (!beholder_health_hit_loaded) return;
+  aAudioOptions_t opts = {
+    .channel = AUDIO_CHANNEL_ENEMY,
+    .volume = 50,
+    .loops = 0, .fade_ms = 0, .interrupt = 0
+  };
+  a_AudioPlaySound(&beholder_health_hit_sound, &opts);
+}
+
+void game_audio_play_beholder_death(void)
+{
+  if (!beholder_death_loaded) return;
+  aAudioOptions_t opts = {
+    .channel = AUDIO_CHANNEL_AUTO,
+    .volume = 80,
+    .loops = 0, .fade_ms = 0, .interrupt = 0
+  };
+  a_AudioPlaySound(&beholder_death_sound, &opts);
 }

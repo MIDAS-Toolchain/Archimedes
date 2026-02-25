@@ -74,15 +74,21 @@ static void draw_cooldown_pie(aRectf_t rect, float progress)
   SDL_SetRenderDrawColor(app.renderer, overlay.r, overlay.g, overlay.b, overlay.a);
 
   for (int dy = -r; dy <= r; dy++) {
-    for (int dx = -r; dx <= r; dx++) {
-      if (dx * dx + dy * dy > r2) continue;
-
+    int row_dx = (int)sqrtf((float)(r2 - dy * dy));
+    int row_start = cx + row_dx + 1;
+    int row_end = cx - row_dx - 1;
+    for (int dx = -row_dx; dx <= row_dx; dx++) {
       float angle = atan2f((float)dx, (float)(-dy));
       if (angle < 0.0f) angle += 2.0f * (float)PI;
-
       if (angle < threshold) {
-        SDL_RenderDrawPoint(app.renderer, cx + dx, cy + dy);
+        int px = cx + dx;
+        if (px < row_start) row_start = px;
+        if (px > row_end) row_end = px;
       }
+    }
+    if (row_end >= row_start) {
+      SDL_Rect row = { row_start, cy + dy, row_end - row_start + 1, 1 };
+      SDL_RenderFillRect(app.renderer, &row);
     }
   }
 
