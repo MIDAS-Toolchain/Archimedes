@@ -138,9 +138,9 @@ void a_DoWidget( void )
     {
       aContainerWidget_t* con = ( aContainerWidget_t* )focused_container->data;
 
-      if ( app.keyboard[SDL_SCANCODE_UP] )
+      if ( app.keyboard[SDL_SCANCODE_UP] || app.keyboard[SDL_SCANCODE_W] )
       {
-        app.keyboard[SDL_SCANCODE_UP] = 0;
+        app.keyboard[SDL_SCANCODE_UP] = app.keyboard[SDL_SCANCODE_W] = 0;
 
         int idx = con->focus_index;
         for ( int attempts = 0; attempts < con->num_components; attempts++ )
@@ -155,9 +155,9 @@ void a_DoWidget( void )
         }
       }
 
-      if ( app.keyboard[SDL_SCANCODE_DOWN] )
+      if ( app.keyboard[SDL_SCANCODE_DOWN] || app.keyboard[SDL_SCANCODE_S] )
       {
-        app.keyboard[SDL_SCANCODE_DOWN] = 0;
+        app.keyboard[SDL_SCANCODE_DOWN] = app.keyboard[SDL_SCANCODE_S] = 0;
 
         int idx = con->focus_index;
         for ( int attempts = 0; attempts < con->num_components; attempts++ )
@@ -181,16 +181,16 @@ void a_DoWidget( void )
 
       if ( focused->type == WT_SELECT || focused->type == WT_SLIDER )
       {
-        if ( app.keyboard[SDL_SCANCODE_LEFT] )
+        if ( app.keyboard[SDL_SCANCODE_LEFT] || app.keyboard[SDL_SCANCODE_A] )
         {
-          app.keyboard[SDL_SCANCODE_LEFT] = 0;
+          app.keyboard[SDL_SCANCODE_LEFT] = app.keyboard[SDL_SCANCODE_A] = 0;
           app.active_widget = focused;
           ChangeWidgetValue( -1 );
         }
 
-        if ( app.keyboard[SDL_SCANCODE_RIGHT] )
+        if ( app.keyboard[SDL_SCANCODE_RIGHT] || app.keyboard[SDL_SCANCODE_D] )
         {
-          app.keyboard[SDL_SCANCODE_RIGHT] = 0;
+          app.keyboard[SDL_SCANCODE_RIGHT] = app.keyboard[SDL_SCANCODE_D] = 0;
           app.active_widget = focused;
           ChangeWidgetValue( 1 );
         }
