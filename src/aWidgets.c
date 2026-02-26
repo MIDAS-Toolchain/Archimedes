@@ -148,9 +148,30 @@ void a_DoWidget( void )
     {
       aContainerWidget_t* con = ( aContainerWidget_t* )focused_container->data;
 
-      if ( app.keyboard[SDL_SCANCODE_UP] || app.keyboard[SDL_SCANCODE_W] )
+      /* Nav keys depend on flex direction */
+      int prev_key, prev_alt, next_key, next_alt;
+      int val_neg_key, val_neg_alt, val_pos_key, val_pos_alt;
+
+      if ( focused_container->flex == 1 )
       {
-        app.keyboard[SDL_SCANCODE_UP] = app.keyboard[SDL_SCANCODE_W] = 0;
+        /* Horizontal: left/right navigate, up/down change value */
+        prev_key = SDL_SCANCODE_LEFT;  prev_alt = SDL_SCANCODE_A;
+        next_key = SDL_SCANCODE_RIGHT; next_alt = SDL_SCANCODE_D;
+        val_neg_key = SDL_SCANCODE_UP;   val_neg_alt = SDL_SCANCODE_W;
+        val_pos_key = SDL_SCANCODE_DOWN; val_pos_alt = SDL_SCANCODE_S;
+      }
+      else
+      {
+        /* Vertical / grid / manual: up/down navigate, left/right change value */
+        prev_key = SDL_SCANCODE_UP;    prev_alt = SDL_SCANCODE_W;
+        next_key = SDL_SCANCODE_DOWN;  next_alt = SDL_SCANCODE_S;
+        val_neg_key = SDL_SCANCODE_LEFT;  val_neg_alt = SDL_SCANCODE_A;
+        val_pos_key = SDL_SCANCODE_RIGHT; val_pos_alt = SDL_SCANCODE_D;
+      }
+
+      if ( app.keyboard[prev_key] || app.keyboard[prev_alt] )
+      {
+        app.keyboard[prev_key] = app.keyboard[prev_alt] = 0;
 
         int idx = con->focus_index;
         for ( int attempts = 0; attempts < con->num_components; attempts++ )
@@ -165,9 +186,9 @@ void a_DoWidget( void )
         }
       }
 
-      if ( app.keyboard[SDL_SCANCODE_DOWN] || app.keyboard[SDL_SCANCODE_S] )
+      if ( app.keyboard[next_key] || app.keyboard[next_alt] )
       {
-        app.keyboard[SDL_SCANCODE_DOWN] = app.keyboard[SDL_SCANCODE_S] = 0;
+        app.keyboard[next_key] = app.keyboard[next_alt] = 0;
 
         int idx = con->focus_index;
         for ( int attempts = 0; attempts < con->num_components; attempts++ )
@@ -191,16 +212,16 @@ void a_DoWidget( void )
 
       if ( focused->type == WT_SELECT || focused->type == WT_SLIDER )
       {
-        if ( app.keyboard[SDL_SCANCODE_LEFT] || app.keyboard[SDL_SCANCODE_A] )
+        if ( app.keyboard[val_neg_key] || app.keyboard[val_neg_alt] )
         {
-          app.keyboard[SDL_SCANCODE_LEFT] = app.keyboard[SDL_SCANCODE_A] = 0;
+          app.keyboard[val_neg_key] = app.keyboard[val_neg_alt] = 0;
           app.active_widget = focused;
           ChangeWidgetValue( -1 );
         }
 
-        if ( app.keyboard[SDL_SCANCODE_RIGHT] || app.keyboard[SDL_SCANCODE_D] )
+        if ( app.keyboard[val_pos_key] || app.keyboard[val_pos_alt] )
         {
-          app.keyboard[SDL_SCANCODE_RIGHT] = app.keyboard[SDL_SCANCODE_D] = 0;
+          app.keyboard[val_pos_key] = app.keyboard[val_pos_alt] = 0;
           app.active_widget = focused;
           ChangeWidgetValue( 1 );
         }
