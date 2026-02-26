@@ -52,6 +52,9 @@ static int pending_press_source; /* 0 = mouse, 1 = keyboard */
 static aWidget_t* focused_container;
 static aTimer_t* press_timer;
 static int pending_press_on_release; /* 0 = on-press (timer), 1 = on-release (wait for release) */
+static int keyboard_nav_active; /* suppress mouse hover until mouse moves */
+static int last_mouse_x;
+static int last_mouse_y;
 
 void a_DoWidget( void )
 {
@@ -100,29 +103,41 @@ void a_DoWidget( void )
 
   if ( !handle_input_widget && !handle_control_widget )
   {
-    aWidget_t* current = GetCurrentWidget();
-    if ( current != NULL )
+    /* Mouse movement clears keyboard nav mode */
+    if ( keyboard_nav_active &&
+         ( app.mouse.x != last_mouse_x || app.mouse.y != last_mouse_y ) )
     {
-      if ( app.mouse.button == 1 && app.mouse.pressed == 1 )
-      {
-        current->state = WI_PRESSED;
-        app.active_widget = current;
+      keyboard_nav_active = 0;
+    }
+    last_mouse_x = app.mouse.x;
+    last_mouse_y = app.mouse.y;
 
-        pending_press_widget = current;
-        pending_press_source = 0;
-        pending_press_on_release = current->on_release;
-        app.mouse.button = 0;
-        if ( !current->on_release )
+    if ( !keyboard_nav_active )
+    {
+      aWidget_t* current = GetCurrentWidget();
+      if ( current != NULL )
+      {
+        if ( app.mouse.button == 1 && app.mouse.pressed == 1 )
         {
-          app.mouse.pressed = 0;
-          a_TimerStart( press_timer );
-        }
-        return;
-      }
+          current->state = WI_PRESSED;
+          app.active_widget = current;
 
-      if ( app.mouse.motion && WithinRange( app.mouse.x, app.mouse.y, current->rect ) )
-      {
-        current->state = WI_HOVERING;
+          pending_press_widget = current;
+          pending_press_source = 0;
+          pending_press_on_release = current->on_release;
+          app.mouse.button = 0;
+          if ( !current->on_release )
+          {
+            app.mouse.pressed = 0;
+            a_TimerStart( press_timer );
+          }
+          return;
+        }
+
+        if ( app.mouse.motion && WithinRange( app.mouse.x, app.mouse.y, current->rect ) )
+        {
+          current->state = WI_HOVERING;
+        }
       }
     }
 
@@ -141,6 +156,7 @@ void a_DoWidget( void )
       if ( app.keyboard[SDL_SCANCODE_UP] || app.keyboard[SDL_SCANCODE_W] )
       {
         app.keyboard[SDL_SCANCODE_UP] = app.keyboard[SDL_SCANCODE_W] = 0;
+        keyboard_nav_active = 1;
 
         int idx = con->focus_index;
         for ( int attempts = 0; attempts < con->num_components; attempts++ )
@@ -158,6 +174,7 @@ void a_DoWidget( void )
       if ( app.keyboard[SDL_SCANCODE_DOWN] || app.keyboard[SDL_SCANCODE_S] )
       {
         app.keyboard[SDL_SCANCODE_DOWN] = app.keyboard[SDL_SCANCODE_S] = 0;
+        keyboard_nav_active = 1;
 
         int idx = con->focus_index;
         for ( int attempts = 0; attempts < con->num_components; attempts++ )
@@ -317,6 +334,7 @@ void a_WidgetsInit( const char* filename )
   handle_control_widget = 0;
   pending_press_widget = NULL;
   focused_container = NULL;
+  keyboard_nav_active = 0;
 
   if ( press_timer == NULL )
   {
