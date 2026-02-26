@@ -236,8 +236,11 @@ typedef struct _widget_t
   int texture;
   aColor_t fg;
   aColor_t bg;
+  aColor_t ag;
+  int has_ag;
   aImage_t* images[MAX_WIDGET_IMAGE];
   int state;
+  int on_release;
   aPoint3f_t text_offset;
   struct _widget_t* next;
   struct _widget_t* prev;
@@ -250,6 +253,7 @@ typedef struct
   aRectf_t rect;
   int spacing;
   int num_components;
+  int focus_index;
   aWidget_t* components;
 } aContainerWidget_t;
 
