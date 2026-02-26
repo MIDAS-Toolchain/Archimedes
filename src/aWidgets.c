@@ -47,6 +47,14 @@ static double slider_delay;
 static double cursor_blink;
 static int handle_input_widget;
 static int handle_control_widget;
+static aWidget_t* pending_press_widget;
+static int pending_press_source; /* 0 = mouse, 1 = keyboard */
+static aWidget_t* focused_container;
+static aTimer_t* press_timer;
+static int pending_press_on_release; /* 0 = on-press (timer), 1 = on-release (wait for release) */
+static int last_mouse_x;
+static int last_mouse_y;
+static int mouse_moved;
 
 void a_DoWidget( void )
 {
@@ -54,140 +62,180 @@ void a_DoWidget( void )
 
   cursor_blink += a_GetDeltaTime();
 
-  ClearWidgetsState(); 
-  
+  /* Handle pending press */
+  if ( pending_press_widget != NULL )
+  {
+    pending_press_widget->state = WI_PRESSED;
+
+    int fire = 0;
+
+    if ( pending_press_on_release )
+    {
+      /* On-release: wait for input release */
+      if ( pending_press_source == 0 )
+      {
+        fire = !app.mouse.pressed;
+      }
+      else
+      {
+        fire = !app.keyboard[SDL_SCANCODE_SPACE] &&
+               !app.keyboard[SDL_SCANCODE_RETURN];
+      }
+    }
+    else
+    {
+      /* On-press: wait for timer */
+      fire = a_TimerOneshot( press_timer, 150 );
+    }
+
+    if ( fire )
+    {
+      if ( pending_press_widget->action != NULL )
+      {
+        pending_press_widget->action();
+      }
+      pending_press_widget = NULL;
+    }
+    return;
+  }
+
+  ClearWidgetsState();
+
   if ( !handle_input_widget && !handle_control_widget )
   {
+    /* Track real mouse movement per frame */
+    mouse_moved = ( app.mouse.x != last_mouse_x || app.mouse.y != last_mouse_y );
+    last_mouse_x = app.mouse.x;
+    last_mouse_y = app.mouse.y;
+
+    /* Mouse click — always allowed */
     aWidget_t* current = GetCurrentWidget();
     if ( current != NULL )
     {
-      //current->state = WI_BACKGROUND;
-
-      if ( app.mouse.button == 1 && app.mouse.state == 1 )
+      if ( app.mouse.button == 1 && app.mouse.pressed == 1 )
       {
-        if ( current->action != NULL )
-        {
-          app.mouse.button = 0;
-          app.mouse.pressed = 0;
-          current->action();
-        }
-
         current->state = WI_PRESSED;
         app.active_widget = current;
+
+        pending_press_widget = current;
+        pending_press_source = 0;
+        pending_press_on_release = current->on_release;
+        app.mouse.button = 0;
+        if ( !current->on_release )
+        {
+          app.mouse.pressed = 0;
+          a_TimerStart( press_timer );
+        }
         return;
       }
-      
-      if ( app.mouse.motion && WithinRange( app.mouse.x, app.mouse.y, current->rect ) )
+
+      /* Mouse hover — only if mouse actually moved */
+      if ( mouse_moved && WithinRange( app.mouse.x, app.mouse.y, current->rect ) )
       {
         current->state = WI_HOVERING;
       }
     }
 
-    /*if ( app.keyboard[SDL_SCANCODE_UP] )
+    /* If active_widget is a container, track it for keyboard nav */
+    if ( focused_container == NULL &&
+         app.active_widget != NULL && app.active_widget->type == WT_CONTAINER )
     {
-      app.keyboard[SDL_SCANCODE_UP] = 0;
-      if ( app.active_widget->prev->hidden == 1 )
-      {
-        temp = app.active_widget;
-        while ( temp != NULL && temp->hidden != 1 )
-        {
-          temp = temp->prev;
-        }
-
-        if ( temp != NULL )
-        {
-          app.active_widget = temp;
-
-        }
-
-      }
-
-      else
-      {
-        app.active_widget = app.active_widget->prev;
-      }
-
-      if ( app.active_widget == &widget_head )
-      {
-        app.active_widget = widget_tail;
-      }
+      focused_container = app.active_widget;
     }
 
-    if ( app.keyboard[SDL_SCANCODE_DOWN] )
+    /* Keyboard navigation within focused container */
+    if ( focused_container != NULL && focused_container->type == WT_CONTAINER )
     {
-      app.keyboard[SDL_SCANCODE_DOWN] = 0;
+      aContainerWidget_t* con = ( aContainerWidget_t* )focused_container->data;
 
-      if ( app.active_widget->next != NULL )
+      if ( app.keyboard[SDL_SCANCODE_UP] || app.keyboard[SDL_SCANCODE_W] )
       {
-        if ( app.active_widget->next->hidden == 1 )
+        app.keyboard[SDL_SCANCODE_UP] = app.keyboard[SDL_SCANCODE_W] = 0;
+
+        int idx = con->focus_index;
+        for ( int attempts = 0; attempts < con->num_components; attempts++ )
         {
-          temp = app.active_widget;
-          while ( temp != NULL && temp->hidden != 1 )
+          idx--;
+          if ( idx < 0 ) idx = con->num_components - 1;
+          if ( con->components[idx].hidden == 0 )
           {
-            temp = temp->next;
-          }
-
-          if ( temp != NULL )
-          {
-            app.active_widget = temp;
-
+            con->focus_index = idx;
+            break;
           }
         }
-  
-        else
+      }
+
+      if ( app.keyboard[SDL_SCANCODE_DOWN] || app.keyboard[SDL_SCANCODE_S] )
+      {
+        app.keyboard[SDL_SCANCODE_DOWN] = app.keyboard[SDL_SCANCODE_S] = 0;
+
+        int idx = con->focus_index;
+        for ( int attempts = 0; attempts < con->num_components; attempts++ )
         {
-          app.active_widget = app.active_widget->next;
+          idx++;
+          if ( idx >= con->num_components ) idx = 0;
+          if ( con->components[idx].hidden == 0 )
+          {
+            con->focus_index = idx;
+            break;
+          }
         }
       }
-  
-      else
+
+      /* Keep focused component in hover state */
+      aWidget_t* focused = &con->components[con->focus_index];
+      if ( focused->hidden == 0 )
       {
-        app.active_widget = widget_head.next;
+        focused->state = WI_HOVERING;
       }
 
-      if ( app.active_widget == NULL )
+      if ( focused->type == WT_SELECT || focused->type == WT_SLIDER )
       {
-        app.active_widget = widget_head.next;
-      }
-    }*/
-    if ( app.active_widget->type == WT_SELECT || app.active_widget->type == WT_SLIDER )
-    {
-      if ( app.keyboard[SDL_SCANCODE_LEFT] )
-      {
-        app.keyboard[SDL_SCANCODE_LEFT] = 0;
-        ChangeWidgetValue( -1 );
-      }
-
-      if ( app.keyboard[SDL_SCANCODE_RIGHT] )
-      {
-        app.keyboard[SDL_SCANCODE_RIGHT] = 0;
-        ChangeWidgetValue( 1 );
-      }
-    }
-
-    if ( app.active_widget->type == WT_INPUT || app.active_widget->type == WT_CONTROL )
-    {
-      if ( app.keyboard[SDL_SCANCODE_SPACE] ||
-        app.keyboard[SDL_SCANCODE_RETURN] )
-      { 
-        app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
-
-        if ( app.active_widget->type == WT_INPUT )
+        if ( app.keyboard[SDL_SCANCODE_LEFT] || app.keyboard[SDL_SCANCODE_A] )
         {
+          app.keyboard[SDL_SCANCODE_LEFT] = app.keyboard[SDL_SCANCODE_A] = 0;
+          app.active_widget = focused;
+          ChangeWidgetValue( -1 );
+        }
+
+        if ( app.keyboard[SDL_SCANCODE_RIGHT] || app.keyboard[SDL_SCANCODE_D] )
+        {
+          app.keyboard[SDL_SCANCODE_RIGHT] = app.keyboard[SDL_SCANCODE_D] = 0;
+          app.active_widget = focused;
+          ChangeWidgetValue( 1 );
+        }
+      }
+
+      if ( app.keyboard[SDL_SCANCODE_SPACE] || app.keyboard[SDL_SCANCODE_RETURN] )
+      {
+        if ( focused->type == WT_INPUT )
+        {
+          app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
+          app.active_widget = focused;
           cursor_blink = 0;
           handle_input_widget = 1;
           memset( app.input_text, 0, sizeof( app.input_text ) );
         }
 
-        else if ( app.active_widget->type == WT_CONTROL )
+        else if ( focused->type == WT_CONTROL )
         {
+          app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
+          app.active_widget = focused;
           app.last_key_pressed = -1;
           handle_control_widget = 1;
         }
 
-        else if ( app.active_widget->action != NULL )
+        else
         {
-          app.active_widget->action();
+          focused->state = WI_PRESSED;
+          pending_press_widget = focused;
+          pending_press_source = 1;
+          pending_press_on_release = focused->on_release;
+          if ( !focused->on_release )
+          {
+            app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
+            a_TimerStart( press_timer );
+          }
         }
       }
     }
@@ -277,6 +325,17 @@ void a_WidgetsInit( const char* filename )
   cursor_blink = 0;
   handle_input_widget = 0;
   handle_control_widget = 0;
+  pending_press_widget = NULL;
+  focused_container = NULL;
+  mouse_moved = 0;
+  last_mouse_x = -1;
+  last_mouse_y = -1;
+
+  if ( press_timer == NULL )
+  {
+    press_timer = a_TimerCreate();
+  }
+  a_TimerStop( press_timer );
 }
 
 aWidget_t* a_GetWidget( const char* name )
@@ -520,6 +579,7 @@ static void CreateWidget( aAUFNode_t* root )
     aAUFNode_t* temp_texture = a_AUFGetObjectItem( root, "texture" );
     aAUFNode_t* temp_fg      = a_AUFGetObjectItem( root, "fg" );
     aAUFNode_t* temp_bg      = a_AUFGetObjectItem( root, "bg" );
+    aAUFNode_t* temp_ag      = a_AUFGetObjectItem( root, "ag" );
     aAUFNode_t* temp_w   = a_AUFGetObjectItem( root, "w" );
     aAUFNode_t* temp_h   = a_AUFGetObjectItem( root, "h" );
     aAUFNode_t* temp_background = a_AUFGetObjectItem( root, "background" );
@@ -529,6 +589,7 @@ static void CreateWidget( aAUFNode_t* root )
     aAUFNode_t* temp_text_x   = a_AUFGetObjectItem( root, "text_x" );
     aAUFNode_t* temp_text_y   = a_AUFGetObjectItem( root, "text_y" );
     aAUFNode_t* temp_button_drop_offset = a_AUFGetObjectItem( root, "button_drop_offset" );
+    aAUFNode_t* temp_on_release = a_AUFGetObjectItem( root, "on_release" );
     
     if ( root->value_string != NULL )
     {
@@ -615,6 +676,21 @@ static void CreateWidget( aAUFNode_t* root )
       w->bg.a = bg[3];
     }
 
+    if ( temp_ag != NULL )
+    {
+      int ag[4] = {0};
+      i = 0;
+      for ( node = temp_ag->child; node != NULL; node = node->next )
+      {
+        ag[i++] = node->value_int;
+      }
+      w->ag.r = ag[0];
+      w->ag.g = ag[1];
+      w->ag.b = ag[2];
+      w->ag.a = ag[3];
+      w->has_ag = 1;
+    }
+
     if ( w->texture )
     {
       if ( temp_background != NULL )
@@ -651,6 +727,11 @@ static void CreateWidget( aAUFNode_t* root )
     if ( temp_button_drop_offset != NULL )
     {
       w->text_offset.z = temp_button_drop_offset->value_int;
+    }
+
+    if ( temp_on_release != NULL )
+    {
+      w->on_release = temp_on_release->value_int;
     }
 
     w->state = 0;
@@ -963,6 +1044,8 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       exit(1);
     }
 
+    memset( container->components, 0, sizeof( aWidget_t ) * container->num_components );
+
     i = 0;
     temp_x = w->rect.x;
     temp_y = w->rect.y;
@@ -982,6 +1065,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       aAUFNode_t* node_texture  = a_AUFGetObjectItem( node, "texture" );
       aAUFNode_t* node_fg       = a_AUFGetObjectItem( node, "fg" );
       aAUFNode_t* node_bg       = a_AUFGetObjectItem( node, "bg" );
+      aAUFNode_t* node_ag       = a_AUFGetObjectItem( node, "ag" );
       aAUFNode_t* node_w   = a_AUFGetObjectItem( node, "w" );
       aAUFNode_t* node_h   = a_AUFGetObjectItem( node, "h" );
       aAUFNode_t* node_background = a_AUFGetObjectItem( node, "background" );
@@ -991,7 +1075,8 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       aAUFNode_t* node_text_x   = a_AUFGetObjectItem( node, "text_x" );
       aAUFNode_t* node_text_y   = a_AUFGetObjectItem( node, "text_y" );
       aAUFNode_t* node_button_drop_offset = a_AUFGetObjectItem( node, "button_drop_offset" );
-      
+      aAUFNode_t* node_on_release = a_AUFGetObjectItem( node, "on_release" );
+
       aWidget_t* current = &container->components[i];
 
       if ( node->value_string != NULL )
@@ -1057,7 +1142,22 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
         current->bg.b = bg[2];
         current->bg.a = bg[3];
       }
-      
+
+      if ( node_ag != NULL )
+      {
+        int ag[4] = {0};
+        int j = 0;
+        for ( node_1 = node_ag->child; node_1 != NULL; node_1 = node_1->next )
+        {
+          ag[j++] = node_1->value_int;
+        }
+        current->ag.r = ag[0];
+        current->ag.g = ag[1];
+        current->ag.b = ag[2];
+        current->ag.a = ag[3];
+        current->has_ag = 1;
+      }
+
       if ( current->toggle_label )
       {
         a_CalcTextDimensions( current->label, app.font_type,
@@ -1152,6 +1252,11 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       if ( node_button_drop_offset != NULL )
       {
         current->text_offset.z = node_button_drop_offset->value_int;
+      }
+
+      if ( node_on_release != NULL )
+      {
+        current->on_release = node_on_release->value_int;
       }
 
       current->state = 0;
@@ -1637,6 +1742,9 @@ int a_WidgetCacheFree( void )
     widget_tail = &widget_head;
   }
 
+  focused_container = NULL;
+  pending_press_widget = NULL;
+
   return 0;
 }
 
@@ -1719,6 +1827,11 @@ static aWidget_t* GetCurrentWidget( void )
             {
               if ( WithinRange( app.mouse.x, app.mouse.y, component->rect ) )
               {
+                if ( mouse_moved )
+                {
+                  container->focus_index = i;
+                  focused_container = current;
+                }
                 return component;
               }
             }
@@ -1738,6 +1851,7 @@ static aWidget_t* GetCurrentWidget( void )
 
   return NULL;
 }
+
 
 static int WithinRange( int x, int y, aRectf_t rect )
 {
@@ -1789,8 +1903,18 @@ static void WidgetColor( aWidget_t* w, aColor_t* c )
   {
     if ( strcmp( w->name, app.active_widget->name ) == 0 )
     {
-      c->g = 255;
-      c->r = c->b = 0;
+      if ( w->has_ag )
+      {
+        c->r = w->ag.r;
+        c->g = w->ag.g;
+        c->b = w->ag.b;
+      }
+      else
+      {
+        c->r = w->fg.r;
+        c->g = w->fg.g;
+        c->b = w->fg.b;
+      }
     }
     else
     {
