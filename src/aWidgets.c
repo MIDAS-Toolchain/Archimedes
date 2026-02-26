@@ -1690,7 +1690,7 @@ int a_WidgetCacheFree( void )
     }
     
     memset( &widget_head, 0, sizeof(aWidget_t) );
-    widget_tail = &widget_head;
+    widget_tail = NULL;
   }
 
   return 0;

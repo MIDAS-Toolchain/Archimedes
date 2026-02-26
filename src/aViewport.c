@@ -76,8 +76,8 @@ void a_ViewportDrawRect( aRectf_t rect, aColor_t color )
   float world_x1 = rect.x - rect.w;
   float world_y1 = rect.y - rect.h;
 
-  float world_width  = rect.w * 2.0f;
-  float world_height = rect.h * 2.0f;
+  float world_width  = rect.w ;
+  float world_height = rect.h ;
 
   SDL_Rect r = {
     (int)( ( world_x1 - viewport_x1 ) * current_scale.x ),
@@ -110,7 +110,7 @@ void a_ViewportBlit( aImage_t* img, float x, float y )
   SDL_FRect r = {
     ( ( world_x1 - viewport_x1 ) * current_scale.x ),
     ( ( world_y1 - viewport_y1 ) * current_scale.y ),
-    ( world_width  * current_scale.y ),
+    ( world_width  * current_scale.x ),
     ( world_height * current_scale.y )
   };
   

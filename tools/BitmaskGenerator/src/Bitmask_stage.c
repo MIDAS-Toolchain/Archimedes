@@ -12,16 +12,22 @@ static void sDraw( float );
 static void load_img( void );
 
 aSpriteSheet_t* sheet = NULL;
+int g_sprite_w = 0;
+int g_sprite_h = 0;
 
 void Init_Stage( void )
 {
   app.delegate.logic = sLogic;
   app.delegate.draw  = sDraw;
+  
   float ratio = SCREEN_WIDTH/SCREEN_HEIGHT;
   float view_h = 50.0f;
   float view_w = view_h * ratio;
   app.g_viewport = (aRectf_t){ 500.0f, 500.0f, view_h, view_w };
+  
   sheet = a_SpriteSheetCreate( "resources/assets/tilemap.png", 32, 32 );
+  g_sprite_w = DEFAULT_SPRITE_W;
+  g_sprite_h = DEFAULT_SPRITE_H;
   
   a_WidgetsInit( "resources/load_img_menu.auf" );
   app.active_widget = a_GetWidget( "img_load" );
@@ -66,13 +72,32 @@ static void sDraw( float dt )
 
   if ( sheet != NULL )
   {
-    float img_w = ((float)sheet->img_width )/2;
-    float img_h = ((float)sheet->img_height)/2;
-    float world_x = ( SCREEN_WIDTH /2 );
-    float world_y = ( SCREEN_HEIGHT/2 );
-    float x = ( world_x + img_w );
-    float y = ( world_y + img_h );
+    float x = ( (float)WORLD_WIDTH/2 ) + ((float)sheet->img_width/2);
+    float y = ( (float)WORLD_HEIGHT/2 ) + ((float)sheet->img_height/2);
     a_ViewportBlit( sheet->sheet, x, y );
+    for ( int j = 1; j <= sheet->v_count; j++ )
+    {
+      for ( int i = 1; i <= sheet->h_count; i++ )
+      {
+        int w = i * g_sprite_w;
+        int h = j * g_sprite_h;
+        aRectf_t rect = (aRectf_t){
+          .x = (x-sheet->img_width ) + w,
+          .y = (y-sheet->img_height ) + h,
+          .w = g_sprite_w,
+          .h = g_sprite_h
+        };
+        a_ViewportDrawRect( rect, red );
+        
+        for( int k = 0; k < 9; k++ )
+        {
+          int x1, y1, w1, h1;
+          aRectf_t small_rect;
+          x1 = k / 3;
+          y1 = k % 3;
+        }
+      }
+    }
   }
 }
 
@@ -131,6 +156,8 @@ static void load_img( void )
       }
       
       sheet = a_SpriteSheetCreate( inp->text, sprite_w, sprite_h );
+      g_sprite_w = sprite_w;
+      g_sprite_h = sprite_h;
     }
   }
 
