@@ -750,9 +750,9 @@ int a_GetGlyphOrFallback(int font_type, unsigned int codepoint)
 
 aRectf_t a_GetGlyphSize( void )
 {
-  SDL_Rect g = app.glyphs[app.font_type][0];
-  aRectf_t rect = { .x = 0,.y = 0, .w = g.w, .h = g.h };
-
-  return rect;
+  SDL_Rect rect = app.glyphs[app.font_type][0];
+  aRectf_t rt_rect = { .x = 0, .y = 0, .w = rect.w, .h = rect.h };
+  
+  return rt_rect;
 }
 
