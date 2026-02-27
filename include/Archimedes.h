@@ -242,6 +242,8 @@ typedef struct _widget_t
   int state;
   int on_release;
   aPoint3f_t text_offset;
+  char* calc_x;
+  char* calc_y;
   struct _widget_t* next;
   struct _widget_t* prev;
   void (*action)( void );
@@ -313,6 +315,7 @@ typedef struct _aAUFNode_t {
   struct _aAUFNode_t* child;
 
   int type;
+  int line_number;
 
   char* value_string;
   int value_int;
@@ -1429,6 +1432,7 @@ const char* a_OutputWidgetGetText( aWidget_t* w );
 aAUF_t* a_AUFParser( const char* filename );
 int a_AUFSaveWidgets( const char* filename );
 int a_FreeLine( char** line, const int nl_count );
+double a_CalcResolveWithThis( const char* expr, aRectf_t this_rect );
 
 aAUF_t* a_AUFCreation( void );
 aAUFNode_t* a_AUFNodeCreation( void );

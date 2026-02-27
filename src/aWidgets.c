@@ -45,6 +45,9 @@ static void WidgetColor( aWidget_t* w, aColor_t* c );
 static aWidget_t widget_head;
 static aWidget_t* widget_tail = NULL;
 
+/* current AUF file being loaded — for error messages */
+static const char* g_auf_filename = NULL;
+
 static double slider_delay;
 static double cursor_blink;
 static int handle_input_widget;
@@ -423,6 +426,7 @@ static void LoadWidgets( const char* filename )
   aAUF_t* root;
   aAUFNode_t* node;
 
+  g_auf_filename = filename;
   root = a_AUFParser( filename );
 
   for ( node = root->head; node != NULL; node = node->next )
@@ -431,6 +435,7 @@ static void LoadWidgets( const char* filename )
   }
 
   a_AUFFree( root );
+  g_auf_filename = NULL;
 }
 
 /**
@@ -629,6 +634,26 @@ static void CreateWidget( aAUFNode_t* root )
     if ( root->value_string != NULL )
     {
       STRCPY( w->name, root->value_string );
+
+      /* reserved keywords */
+      if ( strcmp( w->name, "SCREEN" ) == 0 || strcmp( w->name, "THIS" ) == 0 )
+      {
+        printf( "%s:%d\n  AUF error: '%s' is a reserved keyword and cannot be used as a widget name.\n",
+                g_auf_filename, root->line_number, w->name );
+        exit( 1 );
+      }
+
+      /* check for duplicate widget name */
+      for ( aWidget_t* check = widget_head.next; check != NULL; check = check->next )
+      {
+        if ( check != w && strcmp( check->name, w->name ) == 0 )
+        {
+          printf( "%s:%d\n  AUF error: duplicate widget name '%s'\n"
+                  "  Widget names must be unique across all types.\n",
+                  g_auf_filename, root->line_number, w->name );
+          exit( 1 );
+        }
+      }
     }
     
     if ( temp_label != NULL )
@@ -645,12 +670,38 @@ static void CreateWidget( aAUFNode_t* root )
 
     if ( temp_x != NULL )
     {
-      w->rect.x = temp_x->value_int;
+      if ( temp_x->value_string != NULL )
+      {
+        w->calc_x = malloc( strlen( temp_x->value_string ) + 1 );
+        if ( w->calc_x == NULL )
+        {
+          printf( "Failed to allocate memory for calc_x\n" );
+          exit( 1 );
+        }
+        strcpy( w->calc_x, temp_x->value_string );
+      }
+      else
+      {
+        w->rect.x = temp_x->value_int;
+      }
     }
-    
+
     if ( temp_y != NULL )
     {
-      w->rect.y = temp_y->value_int;
+      if ( temp_y->value_string != NULL )
+      {
+        w->calc_y = malloc( strlen( temp_y->value_string ) + 1 );
+        if ( w->calc_y == NULL )
+        {
+          printf( "Failed to allocate memory for calc_y\n" );
+          exit( 1 );
+        }
+        strcpy( w->calc_y, temp_y->value_string );
+      }
+      else
+      {
+        w->rect.y = temp_y->value_int;
+      }
     }
     
     if ( temp_boxed != NULL )
@@ -804,6 +855,34 @@ static void CreateWidget( aAUFNode_t* root )
 
       default:
         break;
+    }
+
+    /* Resolve deferred calc() expressions (THIS / widget references) */
+    if ( w->type != WT_CONTAINER && ( w->calc_x != NULL || w->calc_y != NULL ) )
+    {
+      int uses_this = ( w->calc_x != NULL && strstr( w->calc_x, "THIS" ) != NULL )
+                   || ( w->calc_y != NULL && strstr( w->calc_y, "THIS" ) != NULL );
+
+      if ( uses_this && w->rect.w == 0 && w->rect.h == 0 )
+      {
+        printf( "%s:%d\n  AUF calc error: THIS.w/THIS.h used but widget '%s' has no dimensions.\n"
+                "  Either define (w,h) before (x,y), or use flex:1 for row / flex:2 for column.\n",
+                g_auf_filename, root->line_number, w->name );
+        exit( 1 );
+      }
+
+      if ( w->calc_x != NULL )
+      {
+        w->rect.x = (int)a_CalcResolveWithThis( w->calc_x, w->rect );
+        free( w->calc_x );
+        w->calc_x = NULL;
+      }
+      if ( w->calc_y != NULL )
+      {
+        w->rect.y = (int)a_CalcResolveWithThis( w->calc_y, w->rect );
+        free( w->calc_y );
+        w->calc_y = NULL;
+      }
     }
   }
 }
@@ -1153,6 +1232,37 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       {
         STRCPY( current->name, node->value_string );
 
+        /* reserved keywords */
+        if ( strcmp( current->name, "SCREEN" ) == 0 || strcmp( current->name, "THIS" ) == 0 )
+        {
+          printf( "%s:%d\n  AUF error: '%s' is a reserved keyword and cannot be used as a widget name.\n",
+                  g_auf_filename, node->line_number, current->name );
+          exit( 1 );
+        }
+
+        /* check for duplicate against top-level widgets */
+        for ( aWidget_t* check = widget_head.next; check != NULL; check = check->next )
+        {
+          if ( strcmp( check->name, current->name ) == 0 )
+          {
+            printf( "%s:%d\n  AUF error: duplicate widget name '%s'\n"
+                    "  Widget names must be unique across all types.\n",
+                    g_auf_filename, node->line_number, current->name );
+            exit( 1 );
+          }
+        }
+
+        /* check for duplicate against earlier siblings in this container */
+        for ( int k = 0; k < i; k++ )
+        {
+          if ( strcmp( container->components[k].name, current->name ) == 0 )
+          {
+            printf( "%s:%d\n  AUF error: duplicate widget name '%s'\n"
+                    "  Widget names must be unique across all types.\n",
+                    g_auf_filename, node->line_number, current->name );
+            exit( 1 );
+          }
+        }
       }
 
       if ( node_label != NULL )
@@ -1431,6 +1541,56 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
     {
       w->rect.w = max_component_x_plus_w - w->rect.x;
       w->rect.h = max_component_y_plus_h - w->rect.y;
+    }
+  }
+
+  /* resolve deferred calc expressions (THIS / widget references) */
+  if ( w->calc_x != NULL || w->calc_y != NULL )
+  {
+    int uses_this = ( w->calc_x != NULL && strstr( w->calc_x, "THIS" ) != NULL )
+                 || ( w->calc_y != NULL && strstr( w->calc_y, "THIS" ) != NULL );
+
+    if ( uses_this && w->rect.w == 0 && w->rect.h == 0 )
+    {
+      const char* missing = ( w->calc_x != NULL ) ? "THIS.w" : "THIS.h";
+      printf( "%s:%d\n  AUF calc error: %s used but widget '%s' has no dimensions.\n"
+              "  Either define (w,h) before (x,y), or use flex:1 for row / flex:2 for column.\n",
+              g_auf_filename, root->line_number, missing, w->name );
+      exit( 1 );
+    }
+
+    int old_x = w->rect.x;
+    int old_y = w->rect.y;
+
+    if ( w->calc_x != NULL )
+    {
+      w->rect.x = (int)a_CalcResolveWithThis( w->calc_x, w->rect );
+      free( w->calc_x );
+      w->calc_x = NULL;
+    }
+
+    if ( w->calc_y != NULL )
+    {
+      w->rect.y = (int)a_CalcResolveWithThis( w->calc_y, w->rect );
+      free( w->calc_y );
+      w->calc_y = NULL;
+    }
+
+    /* reposition children by the delta from old to new container position */
+    int dx = w->rect.x - old_x;
+    int dy = w->rect.y - old_y;
+
+    container = (aContainerWidget_t*)w->data;
+    container->rect = w->rect;
+
+    if ( dx != 0 || dy != 0 )
+    {
+      for ( int j = 0; j < container->num_components; j++ )
+      {
+        aWidget_t* child = &container->components[j];
+        child->rect.x += dx;
+        child->rect.y += dy;
+      }
     }
   }
 }
@@ -1923,6 +2083,18 @@ int a_WidgetCacheFree( void )
           break;
       }
       
+      if ( current->calc_x != NULL )
+      {
+        free( current->calc_x );
+        current->calc_x = NULL;
+      }
+
+      if ( current->calc_y != NULL )
+      {
+        free( current->calc_y );
+        current->calc_y = NULL;
+      }
+
       if ( current->data != NULL )
       {
         free( current->data );
@@ -2001,6 +2173,17 @@ static void ContainerWidgetFree( aContainerWidget_t* con )
         break;
     }
 
+    if ( current->calc_x != NULL )
+    {
+      free( current->calc_x );
+      current->calc_x = NULL;
+    }
+
+    if ( current->calc_y != NULL )
+    {
+      free( current->calc_y );
+      current->calc_y = NULL;
+    }
   }
 
   free( con->components );
