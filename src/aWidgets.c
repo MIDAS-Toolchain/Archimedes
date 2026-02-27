@@ -996,8 +996,11 @@ static void CreateSliderWidget( aWidget_t* w, aAUFNode_t* root )
   memset( s, 0, sizeof( aSliderWidget_t ) );
   w->data = s;
 
-  s->step = a_AUFGetObjectItem( root, "step" )->value_int;
-  s->wait_on_change = a_AUFGetObjectItem( root, "wait_on_change" )->value_int;
+  aAUFNode_t* node_step = a_AUFGetObjectItem( root, "step" );
+  aAUFNode_t* node_wait = a_AUFGetObjectItem( root, "wait_on_change" );
+
+  s->step = ( node_step != NULL ) ? node_step->value_int : 1;
+  s->wait_on_change = ( node_wait != NULL ) ? node_wait->value_int : 0;
   s->value = 0;
 
   if ( w->toggle_label )
@@ -1130,6 +1133,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   uint8_t bg[4] = {0};
   
   aAUFNode_t* node_flex      = a_AUFGetObjectItem( root, "flex" );
+  aAUFNode_t* node_justify   = a_AUFGetObjectItem( root, "justify" );
   aAUFNode_t* node_row       = a_AUFGetObjectItem( root, "row" );
   aAUFNode_t* node_col       = a_AUFGetObjectItem( root, "col" );
   aAUFNode_t* node_grid_x    = a_AUFGetObjectItem( root, "grid_x" );
@@ -1153,7 +1157,12 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   {
     w->flex = node_flex->value_int;
   }
-  
+
+  if ( node_justify != NULL )
+  {
+    w->justify = node_justify->value_int;
+  }
+
   if ( node_row != NULL )
   {
     w->grid_size.x = node_row->value_int;
@@ -1199,6 +1208,9 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
     i = 0;
     temp_x = w->rect.x;
     temp_y = w->rect.y;
+
+    int user_w = w->rect.w;
+    int user_h = w->rect.h;
 
     int max_component_x_plus_w = 0;
     int max_component_y_plus_h = 0;
@@ -1540,8 +1552,36 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
 
     if ( w->flex == 1 || w->flex == 2 )
     {
-      w->rect.w = max_component_x_plus_w - w->rect.x;
-      w->rect.h = max_component_y_plus_h - w->rect.y;
+      int content_w = max_component_x_plus_w - w->rect.x;
+      int content_h = max_component_y_plus_h - w->rect.y;
+
+      /* only auto-size dimensions the user didn't specify */
+      if ( user_w == 0 ) w->rect.w = content_w;
+      if ( user_h == 0 ) w->rect.h = content_h;
+
+      /* apply justify: shift children along the main axis */
+      /* 0 = start (default), 1 = center, 2 = end */
+      if ( w->justify > 0 )
+      {
+        int content_size  = ( w->flex == 1 ) ? content_w : content_h;
+        int container_size = ( w->flex == 1 ) ? w->rect.w : w->rect.h;
+
+        int extra = container_size - content_size;
+        if ( extra > 0 )
+        {
+          int offset = 0;
+          if ( w->justify == 1 ) offset = extra / 2;
+          else if ( w->justify == 2 ) offset = extra;
+
+          aWidget_t* c = container->components;
+          while ( c != NULL )
+          {
+            if ( w->flex == 1 ) c->rect.x += offset;
+            else                c->rect.y += offset;
+            c = c->next;
+          }
+        }
+      }
     }
   }
 
@@ -2285,29 +2325,17 @@ static void ClearWidgetsState( void )
 
 static void WidgetColor( aWidget_t* w, aColor_t* c )
 {
-  if ( app.active_widget != NULL )
+  c->r = w->fg.r;
+  c->g = w->fg.g;
+  c->b = w->fg.b;
+
+  if ( app.active_widget != NULL
+    && strcmp( w->name, app.active_widget->name ) == 0
+    && w->has_ag )
   {
-    if ( strcmp( w->name, app.active_widget->name ) == 0 )
-    {
-      if ( w->has_ag )
-      {
-        c->r = w->ag.r;
-        c->g = w->ag.g;
-        c->b = w->ag.b;
-      }
-      else
-      {
-        c->r = w->fg.r;
-        c->g = w->fg.g;
-        c->b = w->fg.b;
-      }
-    }
-    else
-    {
-      c->r = w->fg.r;
-      c->g = w->fg.g;
-      c->b = w->fg.b;
-    }
+    c->r = w->ag.r;
+    c->g = w->ag.g;
+    c->b = w->ag.b;
   }
 }
 

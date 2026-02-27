@@ -231,6 +231,7 @@ typedef struct _widget_t
   int hidden;
   int padding;
   int flex;
+  int justify;
   aPoint2i_t grid_size; //row/col
   aPoint2f_t grid_pos;  //x,y
   int texture;

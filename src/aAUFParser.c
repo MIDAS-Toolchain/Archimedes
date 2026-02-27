@@ -540,26 +540,20 @@ static int handle_parenthesis( aAUFNode_t* root, char* string, int str_len )
   {
     x_AUF->value_string = a_STR_NDUP( x_value, strlen( x_value ) );
   }
-  else if ( xv != (int)xv )
-  {
-    x_AUF->value_double = xv;
-  }
   else
   {
     x_AUF->value_int = (int)xv;
+    x_AUF->value_double = xv;
   }
 
   if ( y_deferred )
   {
     y_AUF->value_string = a_STR_NDUP( y_value, strlen( y_value ) );
   }
-  else if ( yv != (int)yv )
-  {
-    y_AUF->value_double = yv;
-  }
   else
   {
     y_AUF->value_int = (int)yv;
+    y_AUF->value_double = yv;
   }
 
   if ( a_AUFNodeAddChild( root, x_AUF ) < 0 )
@@ -584,17 +578,27 @@ static int handle_parenthesis( aAUFNode_t* root, char* string, int str_len )
 static int handle_char( aAUFNode_t* root, char* string, int str_len )
 {
   char* str_end = strchr( string, ':' );
-  size_t str_end_len = strlen( str_end );
+  if ( str_end == NULL )
+  {
+    printf( "%s:%d\n  AUF format error: missing ':' separator\n"
+            "  got: %.60s\n", g_auf_filename, g_auf_line, string );
+    exit( 1 );
+  }
   aAUFNode_t* new_AUF = a_AUFNodeCreation();
-  char* num_value = NULL;
   int count = 0;
 
   new_AUF->string = a_ParseString( ':', string, str_len );
-  switch ( str_end[1] )
+
+  /* skip whitespace after the colon */
+  char* val = str_end + 1;
+  while ( *val == ' ' || *val == '\t' ) val++;
+  size_t val_len = strlen( val );
+
+  switch ( *val )
   {
     case '"':
-      new_AUF->value_string = a_ParseString( '"', str_end+2, str_end_len-1 );
-  
+      new_AUF->value_string = a_ParseString( '"', val+1, val_len-1 );
+
       if ( a_AUFNodeAddChild( root, new_AUF ) < 0 )
       {
         printf( "Failed to add %s to root\n", new_AUF->string );
@@ -604,31 +608,31 @@ static int handle_char( aAUFNode_t* root, char* string, int str_len )
       break;
 
     case '[':
-      if ( str_end[2] == '"' )
+      if ( val[1] == '"' )
       {
         count = 0;
-        for ( size_t i = 3; i <= str_end_len; i++ )
+        for ( size_t i = 2; i <= val_len; i++ )
         {
-          char* str_value = a_ParseString( '"', str_end+i, str_end_len );
+          char* str_value = a_ParseString( '"', val+i, val_len );
           if ( str_value != NULL )
           {
             size_t str_len = strlen( str_value );
             str_value[str_len] = '\0';
             i += str_len;
-            
+
             if ( strchr( str_value, ',') ) continue;
 
             aAUFNode_t* new_num = a_AUFNodeCreation();
-            
+
             new_num->string = malloc( sizeof( char ) * MAX_LINE_LENGTH );
             if ( new_num->string == NULL )
             {
               printf("Failed to allocate memory for new_num->string: %s, %d\n", __FILE__, __LINE__ );
               return 1;
             }
-            
+
             sprintf( new_num->string, "%d", count );
-           
+
             new_num->value_string = str_value;
 
             a_AUFNodeAddChild( new_AUF, new_num );
@@ -640,30 +644,30 @@ static int handle_char( aAUFNode_t* root, char* string, int str_len )
         new_AUF->value_int = count;
         a_AUFNodeAddChild( root, new_AUF );
       }
-  
+
       else
       {
         count = 0;
-        for ( size_t i = 2; i <= str_end_len; i++ )
+        for ( size_t i = 1; i <= val_len; i++ )
         {
-          char* num_value = a_ParseStringDoubleDelim( ',', ']', str_end+i, str_end_len );
+          char* num_value = a_ParseStringDoubleDelim( ',', ']', val+i, val_len );
           if ( num_value != NULL )
           {
             size_t num_len = strlen( num_value );
             num_value[num_len] = '\0';
             i += num_len;
-            
+
             aAUFNode_t* new_num = a_AUFNodeCreation();
-            
+
             new_num->string = malloc( sizeof( char ) * MAX_LINE_LENGTH );
             if ( new_num->string == NULL )
             {
               printf("Failed to allocate memory for new_num->string: %s, %d\n", __FILE__, __LINE__ );
               return 1;
             }
-            
+
             sprintf( new_num->string, "%d", count );
-            
+
             {
               double v = auf_parse_numeric( num_value, NULL );
               if ( v != (int)v )
@@ -688,10 +692,8 @@ static int handle_char( aAUFNode_t* root, char* string, int str_len )
       break;
 
     default:
-      num_value = strchr( string, ':' );
-
       {
-        double v = auf_parse_numeric( num_value+1, NULL );
+        double v = auf_parse_numeric( val, NULL );
         if ( v != (int)v )
         {
           new_AUF->value_double = v;
@@ -701,7 +703,7 @@ static int handle_char( aAUFNode_t* root, char* string, int str_len )
           new_AUF->value_int = (int)v;
         }
       }
-      
+
       if ( a_AUFNodeAddChild( root, new_AUF ) < 0 )
       {
         printf( "Failed to add %s to root\n", new_AUF->string );
