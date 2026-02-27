@@ -53,7 +53,7 @@
 #define MAX_WORD_LENGTH 32
 #define MAX_LINE_LENGTH 1024
 #define MAX_WIDGET_IMAGE 4
-#define MAX_WIDGET_COUNT 256
+#define MAX_WIDGET_COUNT 512
 
 #define PAN_FACTOR 0.05f
 #define ZOOM_FACTOR 0.9f
@@ -231,6 +231,7 @@ typedef struct _widget_t
   int hidden;
   int padding;
   int flex;
+  int justify;
   aPoint2i_t grid_size; //row/col
   aPoint2f_t grid_pos;  //x,y
   int texture;
@@ -242,6 +243,8 @@ typedef struct _widget_t
   int state;
   int on_release;
   aPoint3f_t text_offset;
+  char* calc_x;
+  char* calc_y;
   struct _widget_t* next;
   struct _widget_t* prev;
   void (*action)( void );
@@ -285,6 +288,15 @@ typedef struct
 
 typedef struct
 {
+  aRectf_t rect;
+  int max_length;
+  int visible_length;
+  int text_offset;
+  char* text;
+} aOutputWidget_t;
+
+typedef struct
+{
   int x, y;
   int value;
 } aControlWidget_t;
@@ -304,6 +316,7 @@ typedef struct _aAUFNode_t {
   struct _aAUFNode_t* child;
 
   int type;
+  int line_number;
 
   char* value_string;
   int value_int;
@@ -1335,6 +1348,7 @@ enum
   WT_INPUT,
   WT_CONTROL,
   WT_CONTAINER,
+  WT_OUTPUT,
 };
 
 enum
@@ -1407,6 +1421,9 @@ void a_WidgetsInit( const char* filename );
 int a_WidgetCacheFree( void );
 aWidget_t a_WidgetGetHeadWidget( void );
 
+void a_OutputWidgetSetText( aWidget_t* w, const char* text );
+const char* a_OutputWidgetGetText( aWidget_t* w );
+
 /*
 ---------------------------------------------------------------
 ---                      Widget Parser                      ---
@@ -1416,6 +1433,7 @@ aWidget_t a_WidgetGetHeadWidget( void );
 aAUF_t* a_AUFParser( const char* filename );
 int a_AUFSaveWidgets( const char* filename );
 int a_FreeLine( char** line, const int nl_count );
+double a_CalcResolveWithThis( const char* expr, aRectf_t this_rect );
 
 aAUF_t* a_AUFCreation( void );
 aAUFNode_t* a_AUFNodeCreation( void );

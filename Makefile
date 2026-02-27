@@ -85,6 +85,7 @@ TEST_EXE_OBJS = $(NATIVE_LIB_OBJS) $(TEST_WID_OBJ)
 EDITOR_EXE_OBJS = $(EDITOR_LIB_OBJS) $(EDITOR_OBJ)
 BITMASK_EXE_OBJS = $(BITMASK_LIB_OBJS) $(BITMASK_OBJ)
 
+
 # ====================================================================
 # PHONY TARGETS
 # ====================================================================
@@ -100,6 +101,7 @@ bitmask:$(BIN_DIR)/bitmask
 
 EMARCH: $(BIN_DIR)/libArchimedes.a
 
+
 # ====================================================================
 # DIRECTORY & UTILITY RULES
 # ====================================================================
@@ -114,11 +116,9 @@ clean:
 
 bear:
 	bear -- make
+
 bearclean:
 	rm compile_commands.json
-
-verify:
-	./verify_architecture.sh
 
 install: $(BIN_DIR)/libArchimedes.so
 	sudo cp $< /usr/lib/
@@ -128,16 +128,6 @@ uninstall:
 	sudo rm /usr/lib/libArchimedes.so
 	sudo rm /usr/include/Archimedes.h
 
-ainstall: $(BIN_DIR)/libArchimedes.a
-	sudo cp $< /usr/lib/
-	sudo cp $(INC_DIR)/Archimedes.h /usr/include/
-
-auninstall:
-	sudo rm /usr/lib/libArchimedes.a
-	sudo rm /usr/include/Archimedes.h
-
-updateHeader:
-	sudo cp $(INC_DIR)/Archimedes.h /usr/include/Archimedes.h
 
 # ====================================================================
 # COMPILATION RULES

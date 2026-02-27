@@ -21,13 +21,15 @@ static void CreateButtonWidget( aWidget_t* w );
 static void CreateSelectWidget( aWidget_t* w, aAUFNode_t* root );
 static void CreateSliderWidget( aWidget_t* w, aAUFNode_t* root );
 static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root );
+static void CreateOutputWidget( aWidget_t* w, aAUFNode_t* root );
 static void CreateControlWidget( aWidget_t* w );
 static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root );
 
 static void DrawButtonWidget( aWidget_t* w );
 static void DrawSelectWidget( aWidget_t* w );
 static void DrawSliderWidget( aWidget_t* w );
-static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect );
+static void DrawInputWidget( aWidget_t* w );
+static void DrawOutputWidget( aWidget_t* w );
 static void DrawControlWidget( aWidget_t* w );
 static void DrawContainerWidget( aWidget_t* w );
 
@@ -42,6 +44,9 @@ static void WidgetColor( aWidget_t* w, aColor_t* c );
 
 static aWidget_t widget_head;
 static aWidget_t* widget_tail = NULL;
+
+/* current AUF file being loaded — for error messages */
+static const char* g_auf_filename = NULL;
 
 static double slider_delay;
 static double cursor_blink;
@@ -148,16 +153,38 @@ void a_DoWidget( void )
     {
       aContainerWidget_t* con = ( aContainerWidget_t* )focused_container->data;
 
-      if ( app.keyboard[SDL_SCANCODE_UP] || app.keyboard[SDL_SCANCODE_W] )
+      /* Nav keys depend on flex direction */
+      int prev_key, prev_alt, next_key, next_alt;
+      int val_neg_key, val_neg_alt, val_pos_key, val_pos_alt;
+
+      if ( focused_container->flex == 1 )
       {
-        app.keyboard[SDL_SCANCODE_UP] = app.keyboard[SDL_SCANCODE_W] = 0;
+        /* Horizontal: left/right navigate, up/down change value */
+        prev_key = SDL_SCANCODE_LEFT;  prev_alt = SDL_SCANCODE_A;
+        next_key = SDL_SCANCODE_RIGHT; next_alt = SDL_SCANCODE_D;
+        val_neg_key = SDL_SCANCODE_UP;   val_neg_alt = SDL_SCANCODE_W;
+        val_pos_key = SDL_SCANCODE_DOWN; val_pos_alt = SDL_SCANCODE_S;
+      }
+      else
+      {
+        /* Vertical / grid / manual: up/down navigate, left/right change value */
+        prev_key = SDL_SCANCODE_UP;    prev_alt = SDL_SCANCODE_W;
+        next_key = SDL_SCANCODE_DOWN;  next_alt = SDL_SCANCODE_S;
+        val_neg_key = SDL_SCANCODE_LEFT;  val_neg_alt = SDL_SCANCODE_A;
+        val_pos_key = SDL_SCANCODE_RIGHT; val_pos_alt = SDL_SCANCODE_D;
+      }
+
+      if ( app.keyboard[prev_key] || app.keyboard[prev_alt] )
+      {
+        app.keyboard[prev_key] = app.keyboard[prev_alt] = 0;
 
         int idx = con->focus_index;
         for ( int attempts = 0; attempts < con->num_components; attempts++ )
         {
           idx--;
           if ( idx < 0 ) idx = con->num_components - 1;
-          if ( con->components[idx].hidden == 0 )
+          if ( con->components[idx].hidden == 0 &&
+               con->components[idx].type != WT_OUTPUT )
           {
             con->focus_index = idx;
             break;
@@ -165,16 +192,17 @@ void a_DoWidget( void )
         }
       }
 
-      if ( app.keyboard[SDL_SCANCODE_DOWN] || app.keyboard[SDL_SCANCODE_S] )
+      if ( app.keyboard[next_key] || app.keyboard[next_alt] )
       {
-        app.keyboard[SDL_SCANCODE_DOWN] = app.keyboard[SDL_SCANCODE_S] = 0;
+        app.keyboard[next_key] = app.keyboard[next_alt] = 0;
 
         int idx = con->focus_index;
         for ( int attempts = 0; attempts < con->num_components; attempts++ )
         {
           idx++;
           if ( idx >= con->num_components ) idx = 0;
-          if ( con->components[idx].hidden == 0 )
+          if ( con->components[idx].hidden == 0 &&
+               con->components[idx].type != WT_OUTPUT )
           {
             con->focus_index = idx;
             break;
@@ -191,16 +219,16 @@ void a_DoWidget( void )
 
       if ( focused->type == WT_SELECT || focused->type == WT_SLIDER )
       {
-        if ( app.keyboard[SDL_SCANCODE_LEFT] || app.keyboard[SDL_SCANCODE_A] )
+        if ( app.keyboard[val_neg_key] || app.keyboard[val_neg_alt] )
         {
-          app.keyboard[SDL_SCANCODE_LEFT] = app.keyboard[SDL_SCANCODE_A] = 0;
+          app.keyboard[val_neg_key] = app.keyboard[val_neg_alt] = 0;
           app.active_widget = focused;
           ChangeWidgetValue( -1 );
         }
 
-        if ( app.keyboard[SDL_SCANCODE_RIGHT] || app.keyboard[SDL_SCANCODE_D] )
+        if ( app.keyboard[val_pos_key] || app.keyboard[val_pos_alt] )
         {
-          app.keyboard[SDL_SCANCODE_RIGHT] = app.keyboard[SDL_SCANCODE_D] = 0;
+          app.keyboard[val_pos_key] = app.keyboard[val_pos_alt] = 0;
           app.active_widget = focused;
           ChangeWidgetValue( 1 );
         }
@@ -208,7 +236,13 @@ void a_DoWidget( void )
 
       if ( app.keyboard[SDL_SCANCODE_SPACE] || app.keyboard[SDL_SCANCODE_RETURN] )
       {
-        if ( focused->type == WT_INPUT )
+        if ( focused->type == WT_OUTPUT )
+        {
+          /* Output widgets are read-only; ignore activation */
+          app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
+        }
+
+        else if ( focused->type == WT_INPUT )
         {
           app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
           app.active_widget = focused;
@@ -292,9 +326,13 @@ void a_DrawWidgets( void )
         break;
       
       case WT_INPUT:
-        DrawInputWidget( w, w->rect ); //This might break
+        DrawInputWidget( w );
         break;
-      
+
+      case WT_OUTPUT:
+        DrawOutputWidget( w );
+        break;
+
       case WT_CONTROL:
         DrawControlWidget( w );
         break;
@@ -327,6 +365,7 @@ void a_WidgetsInit( const char* filename )
   handle_control_widget = 0;
   pending_press_widget = NULL;
   focused_container = NULL;
+  app.active_widget = NULL;
   mouse_moved = 0;
   last_mouse_x = -1;
   last_mouse_y = -1;
@@ -388,6 +427,7 @@ static void LoadWidgets( const char* filename )
   aAUF_t* root;
   aAUFNode_t* node;
 
+  g_auf_filename = filename;
   root = a_AUFParser( filename );
 
   for ( node = root->head; node != NULL; node = node->next )
@@ -396,6 +436,7 @@ static void LoadWidgets( const char* filename )
   }
 
   a_AUFFree( root );
+  g_auf_filename = NULL;
 }
 
 /**
@@ -594,6 +635,26 @@ static void CreateWidget( aAUFNode_t* root )
     if ( root->value_string != NULL )
     {
       STRCPY( w->name, root->value_string );
+
+      /* reserved keywords */
+      if ( strcasecmp( w->name, "SCREEN" ) == 0 || strcasecmp( w->name, "THIS" ) == 0 )
+      {
+        printf( "%s:%d\n  AUF error: '%s' is a reserved keyword and cannot be used as a widget name.\n",
+                g_auf_filename, root->line_number, w->name );
+        exit( 1 );
+      }
+
+      /* check for duplicate widget name */
+      for ( aWidget_t* check = widget_head.next; check != NULL; check = check->next )
+      {
+        if ( check != w && strcmp( check->name, w->name ) == 0 )
+        {
+          printf( "%s:%d\n  AUF error: duplicate widget name '%s'\n"
+                  "  Widget names must be unique across all types.\n",
+                  g_auf_filename, root->line_number, w->name );
+          exit( 1 );
+        }
+      }
     }
     
     if ( temp_label != NULL )
@@ -610,12 +671,38 @@ static void CreateWidget( aAUFNode_t* root )
 
     if ( temp_x != NULL )
     {
-      w->rect.x = temp_x->value_int;
+      if ( temp_x->value_string != NULL )
+      {
+        w->calc_x = malloc( strlen( temp_x->value_string ) + 1 );
+        if ( w->calc_x == NULL )
+        {
+          printf( "Failed to allocate memory for calc_x\n" );
+          exit( 1 );
+        }
+        strcpy( w->calc_x, temp_x->value_string );
+      }
+      else
+      {
+        w->rect.x = temp_x->value_int;
+      }
     }
-    
+
     if ( temp_y != NULL )
     {
-      w->rect.y = temp_y->value_int;
+      if ( temp_y->value_string != NULL )
+      {
+        w->calc_y = malloc( strlen( temp_y->value_string ) + 1 );
+        if ( w->calc_y == NULL )
+        {
+          printf( "Failed to allocate memory for calc_y\n" );
+          exit( 1 );
+        }
+        strcpy( w->calc_y, temp_y->value_string );
+      }
+      else
+      {
+        w->rect.y = temp_y->value_int;
+      }
     }
     
     if ( temp_boxed != NULL )
@@ -754,7 +841,11 @@ static void CreateWidget( aAUFNode_t* root )
       case WT_INPUT:
         CreateInputWidget( w, root );
         break;
-      
+
+      case WT_OUTPUT:
+        CreateOutputWidget( w, root );
+        break;
+
       case WT_CONTROL:
         CreateControlWidget( w );
         break;
@@ -765,6 +856,34 @@ static void CreateWidget( aAUFNode_t* root )
 
       default:
         break;
+    }
+
+    /* Resolve deferred calc() expressions (THIS / widget references) */
+    if ( w->type != WT_CONTAINER && ( w->calc_x != NULL || w->calc_y != NULL ) )
+    {
+      int uses_this = ( w->calc_x != NULL && strstr( w->calc_x, "THIS" ) != NULL )
+                   || ( w->calc_y != NULL && strstr( w->calc_y, "THIS" ) != NULL );
+
+      if ( uses_this && w->rect.w == 0 && w->rect.h == 0 )
+      {
+        printf( "%s:%d\n  AUF calc error: THIS.w/THIS.h used but widget '%s' has no dimensions.\n"
+                "  Either define (w,h) before (x,y), or use flex:1 for row / flex:2 for column.\n",
+                g_auf_filename, root->line_number, w->name );
+        exit( 1 );
+      }
+
+      if ( w->calc_x != NULL )
+      {
+        w->rect.x = (int)a_CalcResolveWithThis( w->calc_x, w->rect );
+        free( w->calc_x );
+        w->calc_x = NULL;
+      }
+      if ( w->calc_y != NULL )
+      {
+        w->rect.y = (int)a_CalcResolveWithThis( w->calc_y, w->rect );
+        free( w->calc_y );
+        w->calc_y = NULL;
+      }
     }
   }
 }
@@ -877,8 +996,11 @@ static void CreateSliderWidget( aWidget_t* w, aAUFNode_t* root )
   memset( s, 0, sizeof( aSliderWidget_t ) );
   w->data = s;
 
-  s->step = a_AUFGetObjectItem( root, "step" )->value_int;
-  s->wait_on_change = a_AUFGetObjectItem( root, "wait_on_change" )->value_int;
+  aAUFNode_t* node_step = a_AUFGetObjectItem( root, "step" );
+  aAUFNode_t* node_wait = a_AUFGetObjectItem( root, "wait_on_change" );
+
+  s->step = ( node_step != NULL ) ? node_step->value_int : 1;
+  s->wait_on_change = ( node_wait != NULL ) ? node_wait->value_int : 0;
   s->value = 0;
 
   if ( w->toggle_label )
@@ -913,9 +1035,10 @@ static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root )
 
   w->data = input;
 
-  input->max_length = a_AUFGetObjectItem( root, "max_length" )->value_int;
-  input->text_offset = a_AUFGetObjectItem( root, "text_offset" )->value_int;
-  input->text = malloc(  input->max_length + 1 );
+  input->max_length     = a_AUFGetObjectItem( root, "max_length" )->value_int;
+  input->visible_length = a_AUFGetObjectItem( root, "visible_length" )->value_int;
+  input->text_offset    = a_AUFGetObjectItem( root, "text_offset" )->value_int;
+  input->text           = malloc(  input->max_length + 1 );
 
   STRNCPY( input->text, "...", MAX_INPUT_LENGTH );
 
@@ -928,6 +1051,36 @@ static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root )
   input->rect.y = w->rect.y;
   a_CalcTextDimensions( input->text, app.font_type,
                         &input->rect.w, &input->rect.h );
+}
+
+static void CreateOutputWidget( aWidget_t* w, aAUFNode_t* root )
+{
+  aOutputWidget_t* output;
+
+  output = malloc( sizeof( aOutputWidget_t ) );
+  memset( output, 0, sizeof( aOutputWidget_t ) );
+
+  w->data = output;
+
+  aAUFNode_t* node_max_length = a_AUFGetObjectItem( root, "max_length" );
+  aAUFNode_t* node_visible    = a_AUFGetObjectItem( root, "visible_length" );
+  aAUFNode_t* node_offset     = a_AUFGetObjectItem( root, "text_offset" );
+
+  output->max_length     = ( node_max_length != NULL ) ? node_max_length->value_int : MAX_LINE_LENGTH;
+  output->visible_length = ( node_visible != NULL ) ? node_visible->value_int : 16;
+  output->text_offset    = ( node_offset != NULL ) ? node_offset->value_int : 0;
+  output->text           = malloc( output->max_length + 1 );
+  memset( output->text, 0, output->max_length + 1 );
+
+  if ( w->toggle_label )
+  {
+    a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
+  }
+
+  output->rect.x = w->rect.x + w->rect.w + output->text_offset;
+  output->rect.y = w->rect.y;
+  a_CalcTextDimensions( "A", app.font_type,
+                        &output->rect.w, &output->rect.h );
 }
 
 /**
@@ -980,6 +1133,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   uint8_t bg[4] = {0};
   
   aAUFNode_t* node_flex      = a_AUFGetObjectItem( root, "flex" );
+  aAUFNode_t* node_justify   = a_AUFGetObjectItem( root, "justify" );
   aAUFNode_t* node_row       = a_AUFGetObjectItem( root, "row" );
   aAUFNode_t* node_col       = a_AUFGetObjectItem( root, "col" );
   aAUFNode_t* node_grid_x    = a_AUFGetObjectItem( root, "grid_x" );
@@ -995,14 +1149,20 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   }
 
   memset( container, 0, sizeof( aContainerWidget_t ) );
-  
+
   w->data = container;
+  container->rect = w->rect;
 
   if ( node_flex != NULL )
   {
     w->flex = node_flex->value_int;
   }
-  
+
+  if ( node_justify != NULL )
+  {
+    w->justify = node_justify->value_int;
+  }
+
   if ( node_row != NULL )
   {
     w->grid_size.x = node_row->value_int;
@@ -1049,6 +1209,9 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
     temp_x = w->rect.x;
     temp_y = w->rect.y;
 
+    int user_w = w->rect.w;
+    int user_h = w->rect.h;
+
     int max_component_x_plus_w = 0;
     int max_component_y_plus_h = 0;
 
@@ -1082,6 +1245,37 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       {
         STRCPY( current->name, node->value_string );
 
+        /* reserved keywords */
+        if ( strcasecmp( current->name, "SCREEN" ) == 0 || strcasecmp( current->name, "THIS" ) == 0 )
+        {
+          printf( "%s:%d\n  AUF error: '%s' is a reserved keyword and cannot be used as a widget name.\n",
+                  g_auf_filename, node->line_number, current->name );
+          exit( 1 );
+        }
+
+        /* check for duplicate against top-level widgets */
+        for ( aWidget_t* check = widget_head.next; check != NULL; check = check->next )
+        {
+          if ( strcmp( check->name, current->name ) == 0 )
+          {
+            printf( "%s:%d\n  AUF error: duplicate widget name '%s'\n"
+                    "  Widget names must be unique across all types.\n",
+                    g_auf_filename, node->line_number, current->name );
+            exit( 1 );
+          }
+        }
+
+        /* check for duplicate against earlier siblings in this container */
+        for ( int k = 0; k < i; k++ )
+        {
+          if ( strcmp( container->components[k].name, current->name ) == 0 )
+          {
+            printf( "%s:%d\n  AUF error: duplicate widget name '%s'\n"
+                    "  Widget names must be unique across all types.\n",
+                    g_auf_filename, node->line_number, current->name );
+            exit( 1 );
+          }
+        }
       }
 
       if ( node_label != NULL )
@@ -1306,6 +1500,18 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
                                             ( input->rect.y + input->rect.h ) );
           break;
 
+        case WT_OUTPUT:
+        {
+          CreateOutputWidget( current, node );
+          aOutputWidget_t* out = (aOutputWidget_t*)current->data;
+
+          current_widget_max_x_extent = MAX( current_widget_max_x_extent,
+                                            ( out->rect.x + out->rect.w ) );
+          current_widget_max_y_extent = MAX( current_widget_max_y_extent,
+                                            ( out->rect.y + out->rect.h ) );
+          break;
+        }
+
         case WT_CONTROL:
           CreateControlWidget( current );
           break;
@@ -1346,8 +1552,86 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
 
     if ( w->flex == 1 || w->flex == 2 )
     {
-      w->rect.w = max_component_x_plus_w - w->rect.x;
-      w->rect.h = max_component_y_plus_h - w->rect.y;
+      int content_w = max_component_x_plus_w - w->rect.x;
+      int content_h = max_component_y_plus_h - w->rect.y;
+
+      /* only auto-size dimensions the user didn't specify */
+      if ( user_w == 0 ) w->rect.w = content_w;
+      if ( user_h == 0 ) w->rect.h = content_h;
+
+      /* apply justify: shift children along the main axis */
+      /* 0 = start (default), 1 = center, 2 = end */
+      if ( w->justify > 0 )
+      {
+        int content_size  = ( w->flex == 1 ) ? content_w : content_h;
+        int container_size = ( w->flex == 1 ) ? w->rect.w : w->rect.h;
+
+        int extra = container_size - content_size;
+        if ( extra > 0 )
+        {
+          int offset = 0;
+          if ( w->justify == 1 ) offset = extra / 2;
+          else if ( w->justify == 2 ) offset = extra;
+
+          aWidget_t* c = container->components;
+          while ( c != NULL )
+          {
+            if ( w->flex == 1 ) c->rect.x += offset;
+            else                c->rect.y += offset;
+            c = c->next;
+          }
+        }
+      }
+    }
+  }
+
+  /* resolve deferred calc expressions (THIS / widget references) */
+  if ( w->calc_x != NULL || w->calc_y != NULL )
+  {
+    int uses_this = ( w->calc_x != NULL && strstr( w->calc_x, "THIS" ) != NULL )
+                 || ( w->calc_y != NULL && strstr( w->calc_y, "THIS" ) != NULL );
+
+    if ( uses_this && w->rect.w == 0 && w->rect.h == 0 )
+    {
+      const char* missing = ( w->calc_x != NULL ) ? "THIS.w" : "THIS.h";
+      printf( "%s:%d\n  AUF calc error: %s used but widget '%s' has no dimensions.\n"
+              "  Either define (w,h) before (x,y), or use flex:1 for row / flex:2 for column.\n",
+              g_auf_filename, root->line_number, missing, w->name );
+      exit( 1 );
+    }
+
+    int old_x = w->rect.x;
+    int old_y = w->rect.y;
+
+    if ( w->calc_x != NULL )
+    {
+      w->rect.x = (int)a_CalcResolveWithThis( w->calc_x, w->rect );
+      free( w->calc_x );
+      w->calc_x = NULL;
+    }
+
+    if ( w->calc_y != NULL )
+    {
+      w->rect.y = (int)a_CalcResolveWithThis( w->calc_y, w->rect );
+      free( w->calc_y );
+      w->calc_y = NULL;
+    }
+
+    /* reposition children by the delta from old to new container position */
+    int dx = w->rect.x - old_x;
+    int dy = w->rect.y - old_y;
+
+    container = (aContainerWidget_t*)w->data;
+    container->rect = w->rect;
+
+    if ( dx != 0 || dy != 0 )
+    {
+      for ( int j = 0; j < container->num_components; j++ )
+      {
+        aWidget_t* child = &container->components[j];
+        child->rect.x += dx;
+        child->rect.y += dy;
+      }
     }
   }
 }
@@ -1479,36 +1763,47 @@ static void DrawSliderWidget( aWidget_t* w )
 
 }
 
-static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect )
+static void DrawInputWidget( aWidget_t* w )
 {
   aColor_t c;
   aInputWidget_t* input;
   float text_width, text_height;
+  aRectf_t glyph_rect;
 
   input = ( aInputWidget_t* )w->data;
   
   a_CalcTextDimensions( input->text, app.font_type, &text_width, &text_height );
+  glyph_rect = a_GetGlyphSize();
 
   WidgetColor( w, &c );
   
   if ( w->hidden != 1 )
   {
+    
     if ( w->boxed == 1 )
     {
-      float rect_w = ( ( w->rect.w + text_width ) + ( 2 * w->padding ) ) + 9;
-      if ( rect_w > cont_rect.w ) rect_w = cont_rect.w;
-      if ( rect_w > cont_rect.h )
-      {
-
-      }
-
       aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - w->padding ),
-                                  .y = ( w->rect.y - w->padding ),
-                                  .w = ( rect_w ),
-                                  .h = ( ( w->rect.h ) + ( 2 * w->padding ) ) };
-      
+        .y = ( w->rect.y - w->padding ),
+        .w = ( w->rect.w + ( glyph_rect.w * input->visible_length ) ),
+        .h = ( ( w->rect.h ) + ( 2 * w->padding ) ) };
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );
+    }
+    
+    aRectf_t text_rect = (aRectf_t){ 
+      .x = ( input->rect.x ),
+      .y = ( input->rect.y ),
+      .w = ( ( glyph_rect.w * input->visible_length ) ),
+      .h = ( glyph_rect.h )
+    };
+     
+    a_DrawRect( text_rect, black );
+
+    int scroll_offset = 0;
+
+    if ( text_width > text_rect.w )
+    {
+      scroll_offset = text_width - text_rect.w;
     }
 
     aTextStyle_t style = { .type       = app.font_type,
@@ -1518,10 +1813,10 @@ static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect )
                            .wrap_width = 0,
                            .scale      = 1.0f,
                            .padding    = 0 };
-
     a_DrawText( w->label, w->rect.x, w->rect.y, style );
 
-    a_DrawText( input->text, input->rect.x, input->rect.y, style );
+    a_SetClipRect( text_rect );
+    a_DrawText( input->text, input->rect.x - scroll_offset, input->rect.y, style );
     
     uint32_t ticks = SDL_GetTicks();
     uint8_t is_visible = ( ticks % 1000 ) < 500;
@@ -1533,6 +1828,75 @@ static void DrawInputWidget( aWidget_t* w, aRectf_t cont_rect )
                                            .w = 9,
                                            .h = 16 };
       a_DrawFilledRect( cursor_rect, green );
+    }
+  }
+  a_DisableClipRect();
+}
+
+static void DrawOutputWidget( aWidget_t* w )
+{
+  aColor_t c;
+  aOutputWidget_t* output;
+  float label_w, label_h, text_w, text_h;
+
+  output = ( aOutputWidget_t* )w->data;
+
+  WidgetColor( w, &c );
+
+  if ( w->hidden != 1 )
+  {
+    label_w = 0;
+    label_h = 0;
+    text_w  = 0;
+    text_h  = 0;
+
+    if ( w->toggle_label && w->label[0] != '\0' )
+    {
+      a_CalcTextDimensions( w->label, app.font_type, &label_w, &label_h );
+    }
+
+    if ( output->text[0] != '\0' )
+    {
+      a_CalcTextDimensions( output->text, app.font_type, &text_w, &text_h );
+    }
+
+    float text_x = w->rect.x + label_w + output->text_offset;
+    float total_w = label_w + output->text_offset + text_w;
+    float total_h = ( label_h > text_h ) ? label_h : text_h;
+
+    if ( total_h == 0 )
+    {
+      float dummy;
+      a_CalcTextDimensions( "A", app.font_type, &dummy, &total_h );
+    }
+
+    if ( w->boxed == 1 )
+    {
+      aRectf_t rect = (aRectf_t){
+        .x = w->rect.x - w->padding,
+        .y = w->rect.y - w->padding,
+        .w = total_w + ( 2 * w->padding ),
+        .h = total_h + ( 2 * w->padding ) };
+      a_DrawFilledRect( rect, w->bg );
+      a_DrawRect( rect, black );
+    }
+
+    aTextStyle_t style = { .type       = app.font_type,
+                           .fg         = c,
+                           .bg         = {0,0,0,0},
+                           .align      = TEXT_ALIGN_LEFT,
+                           .wrap_width = 0,
+                           .scale      = 1.0f,
+                           .padding    = 0 };
+
+    if ( label_w > 0 )
+    {
+      a_DrawText( w->label, w->rect.x, w->rect.y, style );
+    }
+
+    if ( text_w > 0 )
+    {
+      a_DrawText( output->text, text_x, w->rect.y, style );
     }
   }
 }
@@ -1592,14 +1956,48 @@ static void DrawContainerWidget( aWidget_t* w )
   aContainerWidget_t* container;
 
   container = ( aContainerWidget_t* )w->data;
-  
+
   if ( w->hidden != 1 )
   {
-    aRectf_t rect = (aRectf_t){ 
+    /* Recalculate container extent from children to handle dynamic content */
+    float max_x = w->rect.x + w->rect.w;
+    float max_y = w->rect.y + w->rect.h;
+
+    for ( int i = 0; i < container->num_components; i++ )
+    {
+      aWidget_t* comp = &container->components[i];
+      if ( comp->hidden == 1 ) continue;
+
+      if ( comp->type == WT_OUTPUT )
+      {
+        aOutputWidget_t* out = ( aOutputWidget_t* )comp->data;
+        float lw = 0, lh = 0, tw = 0, th = 0;
+
+        if ( comp->toggle_label && comp->label[0] != '\0' )
+        {
+          a_CalcTextDimensions( comp->label, app.font_type, &lw, &lh );
+        }
+        if ( out->text[0] != '\0' )
+        {
+          a_CalcTextDimensions( out->text, app.font_type, &tw, &th );
+        }
+
+        float ext_x = comp->rect.x + lw + out->text_offset + tw + comp->padding;
+        float ext_y = comp->rect.y + ( ( lh > th ) ? lh : th ) + comp->padding;
+
+        if ( ext_x > max_x ) max_x = ext_x;
+        if ( ext_y > max_y ) max_y = ext_y;
+      }
+    }
+
+    float cont_w = max_x - w->rect.x;
+    float cont_h = max_y - w->rect.y;
+
+    aRectf_t rect = (aRectf_t){
       .x = ( w->rect.x - w->padding - 5 ),
       .y = ( w->rect.y - w->padding - 3 ),
-      .w = ( w->rect.w + ( 2 * w->padding + 15 ) + ( 2 * w->text_offset.x ) ),
-      .h = ( w->rect.h + ( 2 * w->padding + 10 ) + ( 2 * w->text_offset.y ) ) };
+      .w = ( cont_w + ( 2 * w->padding + 15 ) + ( 2 * w->text_offset.x ) ),
+      .h = ( cont_h + ( 2 * w->padding + 10 ) + ( 2 * w->text_offset.y ) ) };
     
     if ( w->texture )
     {
@@ -1634,7 +2032,11 @@ static void DrawContainerWidget( aWidget_t* w )
             break;
 
           case WT_INPUT:
-            DrawInputWidget( &current, w->rect );
+            DrawInputWidget( &current );
+            break;
+
+          case WT_OUTPUT:
+            DrawOutputWidget( &current );
             break;
 
           case WT_SELECT:
@@ -1705,7 +2107,14 @@ int a_WidgetCacheFree( void )
           temp_input = (aInputWidget_t*)current->data;
           free( temp_input->text );
           break;
-        
+
+        case WT_OUTPUT:
+        {
+          aOutputWidget_t* temp_output = (aOutputWidget_t*)current->data;
+          free( temp_output->text );
+          break;
+        }
+
         case WT_CONTAINER:
           temp_container = (aContainerWidget_t*)current->data;
           ContainerWidgetFree( temp_container );
@@ -1715,6 +2124,18 @@ int a_WidgetCacheFree( void )
           break;
       }
       
+      if ( current->calc_x != NULL )
+      {
+        free( current->calc_x );
+        current->calc_x = NULL;
+      }
+
+      if ( current->calc_y != NULL )
+      {
+        free( current->calc_y );
+        current->calc_y = NULL;
+      }
+
       if ( current->data != NULL )
       {
         free( current->data );
@@ -1726,7 +2147,7 @@ int a_WidgetCacheFree( void )
     }
     
     memset( &widget_head, 0, sizeof(aWidget_t) );
-    widget_tail = &widget_head;
+    widget_tail = NULL;
   }
 
   focused_container = NULL;
@@ -1768,15 +2189,22 @@ static void ContainerWidgetFree( aContainerWidget_t* con )
         temp_input = (aInputWidget_t*)current->data;
         free( temp_input->text );
         break;
-      
+
+      case WT_OUTPUT:
+      {
+        aOutputWidget_t* temp_output = (aOutputWidget_t*)current->data;
+        free( temp_output->text );
+        break;
+      }
+
       case WT_BUTTON:
         break;
-      
+
       case WT_SLIDER:
         temp_slider = (aSliderWidget_t*)current->data;
         free( temp_slider );
         break;
-      
+
       case WT_CONTROL:
         temp_control = (aControlWidget_t*)current->data;
         free( temp_control );
@@ -1786,6 +2214,17 @@ static void ContainerWidgetFree( aContainerWidget_t* con )
         break;
     }
 
+    if ( current->calc_x != NULL )
+    {
+      free( current->calc_x );
+      current->calc_x = NULL;
+    }
+
+    if ( current->calc_y != NULL )
+    {
+      free( current->calc_y );
+      current->calc_y = NULL;
+    }
   }
 
   free( con->components );
@@ -1810,7 +2249,7 @@ static aWidget_t* GetCurrentWidget( void )
           {
             aWidget_t* component = &container->components[i];
 
-            if ( component->hidden == 0 )
+            if ( component->hidden == 0 && component->type != WT_OUTPUT )
             {
               if ( WithinRange( app.mouse.x, app.mouse.y, component->rect ) )
               {
@@ -1826,7 +2265,7 @@ static aWidget_t* GetCurrentWidget( void )
 
         }
 
-        else
+        else if ( current->type != WT_OUTPUT )
         {
           return current;
         }
@@ -1886,29 +2325,39 @@ static void ClearWidgetsState( void )
 
 static void WidgetColor( aWidget_t* w, aColor_t* c )
 {
-  if ( app.active_widget != NULL )
+  c->r = w->fg.r;
+  c->g = w->fg.g;
+  c->b = w->fg.b;
+
+  if ( app.active_widget != NULL
+    && strcmp( w->name, app.active_widget->name ) == 0
+    && w->has_ag )
   {
-    if ( strcmp( w->name, app.active_widget->name ) == 0 )
-    {
-      if ( w->has_ag )
-      {
-        c->r = w->ag.r;
-        c->g = w->ag.g;
-        c->b = w->ag.b;
-      }
-      else
-      {
-        c->r = w->fg.r;
-        c->g = w->fg.g;
-        c->b = w->fg.b;
-      }
-    }
-    else
-    {
-      c->r = w->fg.r;
-      c->g = w->fg.g;
-      c->b = w->fg.b;
-    }
+    c->r = w->ag.r;
+    c->g = w->ag.g;
+    c->b = w->ag.b;
   }
 }
 
+void a_OutputWidgetSetText( aWidget_t* w, const char* text )
+{
+  if ( w == NULL || w->data == NULL || text == NULL )
+  {
+    return;
+  }
+
+  aOutputWidget_t* output = ( aOutputWidget_t* )w->data;
+  memset( output->text, 0, output->max_length + 1 );
+  strncpy( output->text, text, output->max_length );
+}
+
+const char* a_OutputWidgetGetText( aWidget_t* w )
+{
+  if ( w == NULL || w->data == NULL )
+  {
+    return NULL;
+  }
+
+  aOutputWidget_t* output = ( aOutputWidget_t* )w->data;
+  return output->text;
+}
