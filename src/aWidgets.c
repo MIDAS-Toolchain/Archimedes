@@ -37,6 +37,7 @@ static void DoInputWidget( void );
 static void DoControlWidget( void );
 static aWidget_t* GetCurrentWidget( void );
 static int WithinRangePadded( int x, int y, aWidget_t* w );
+static int WithinRange( int x, int y, aRectf_t rect );
 static void ClearWidgetsState( void );
 static void ContainerWidgetFree( aContainerWidget_t* con, aWidget_t* parent );
 
@@ -156,6 +157,8 @@ static int resolve_int_ref( aAUFNode_t* node )
 
 static void resolve_padding( aWidget_t* w, int* left, int* right, int* top, int* bottom )
 {
+  if ( w == NULL ) return;
+
   int base = w->padding;
   int px   = w->padding_x;
   int py   = w->padding_y;
@@ -439,6 +442,17 @@ void a_DoWidget( void )
   else if ( handle_input_widget )
   {
     DoInputWidget();
+    
+    aInputWidget_t* curr_input = (aInputWidget_t*)app.active_widget->data;
+    aRectf_t glpyh_rect = a_GetGlyphSize();
+    
+    aRectf_t current_rect = (aRectf_t){
+      .x = ( curr_input->rect.x ),
+      .y = ( curr_input->rect.y ),
+      .w = ( glpyh_rect.w * curr_input->visible_length ),
+      .h = ( glpyh_rect.h )
+    };
+    
     if ( app.keyboard[A_ESCAPE] == 1 )
     {
       app.keyboard[A_ESCAPE] = 0;
@@ -446,11 +460,31 @@ void a_DoWidget( void )
       handle_input_widget = 0;
     }
 
+    if ( app.keyboard[A_LCTRL] && app.keyboard[A_V] )
+    {
+      app.keyboard[A_LCTRL] = app.keyboard[A_V] = 0;
+      curr_input->text = SDL_GetClipboardText();
+    }
+    
+    if ( app.keyboard[A_LCTRL] && app.keyboard[A_C] )
+    {
+      app.keyboard[A_LCTRL] = app.keyboard[A_V] = 0;
+      SDL_SetClipboardText( curr_input->text );
+    }
+    
+    if( app.mouse.button == 1 && 
+      !WithinRange( app.mouse.x, app.mouse.y, current_rect ) )
+    {
+      app.mouse.button = 0;
+      app.mouse.clicks = 0;
+      handle_input_widget = 0;
+      return;
+    }
+
     if( app.mouse.button == 1 && app.mouse.clicks == 2 )
     {
       app.mouse.button = 0;
       app.mouse.clicks = 0;
-      aInputWidget_t* curr_input = (aInputWidget_t*)app.active_widget->data;
       memset( curr_input->text, 0, MAX_NAME_LENGTH );
     }
   }
@@ -1773,6 +1807,8 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
 
       current->state = 0;
 
+      aRectf_t glyph_rect;
+      
       switch ( current->type )
       {
         case WT_BUTTON:
@@ -1812,11 +1848,15 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
         case WT_INPUT:
           CreateInputWidget( current, node );
           input = (aInputWidget_t*)current->data;
+          glyph_rect = a_GetGlyphSize();
 
-          current_widget_max_x_extent = MAX( current_widget_max_x_extent,
-                                            ( input->rect.x + input->rect.w ) );
-          current_widget_max_y_extent = MAX( current_widget_max_y_extent,
-                                            ( input->rect.y + input->rect.h ) );
+          current_widget_max_x_extent = MAX(
+            current_widget_max_x_extent,
+            ( ( input->rect.x + input->rect.w )
+            + ( glyph_rect.w * input->visible_length ) ) );
+          current_widget_max_y_extent = MAX(
+            current_widget_max_y_extent,
+            ( input->rect.y + input->rect.h ) );
           break;
 
         case WT_OUTPUT:
@@ -2683,12 +2723,24 @@ static aWidget_t* GetCurrentWidget( void )
 
 static int WithinRangePadded( int x, int y, aWidget_t* w )
 {
+  if ( w == NULL ) return 0;
   int pl, pr, pt, pb;
   resolve_padding( w, &pl, &pr, &pt, &pb );
 
   if ( x >= ( w->rect.x - pl ) && y >= ( w->rect.y - pt ) &&
        x <= ( w->rect.x + w->rect.w + pr ) &&
        y <= ( w->rect.y + w->rect.h + pb ) )
+  {
+    return 1;
+  }
+
+  return 0;
+}
+
+static int WithinRange( int x, int y, aRectf_t rect )
+{
+  if ( x >= rect.x && y >= rect.y &&
+       x <= ( rect.x + rect.w ) && y <= ( rect.y + rect.h ) )
   {
     return 1;
   }
