@@ -108,6 +108,13 @@ enum
   AUF_Raw
 };
 
+typedef enum
+{
+  BACKGROUND,
+  MIDGROUND,
+  FOREGROUND
+} Ground_t;
+
 /*
 ---------------------------------------------------------------
 ---                         Structs                         ---
@@ -427,12 +434,19 @@ typedef struct _tile
 {
   uint32_t tile;
   uint8_t solid;
+  Ground_t base;
 } aTile_t;
+
+typedef struct _tile_set
+{
+  aImage_t* img;
+} aTileset_t;
 
 typedef struct _world
 {
   aTile_t* map;
   int tile_count;
+  int tile_w, tile_h;
   int rows, cols;
 } aWorld_t;
 
@@ -2177,6 +2191,13 @@ aImage_t* a_ImageFromSpriteSheet( aSpriteSheet_t* sheet, int x, int y );
 */
 
 aWorld_t* a_2DWorldCreate( int width, int height, int tile_w, int tile_h );
+
+/*
+---------------------------------------------------------------
+---                      Tiles                           ---
+---------------------------------------------------------------
+*/
+
 
 #endif
 
