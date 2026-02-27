@@ -220,18 +220,27 @@ typedef struct
   aTimer_t* animation_timer;
 } aAnimation_t;
 
+typedef struct _aSoundEffect_t aSoundEffect_t;
+
 typedef struct _widget_t
 {
   int type;
   char name[MAX_FILENAME_LENGTH];
   aRectf_t rect;
   char label[MAX_FILENAME_LENGTH];
-  int toggle_label;
+  int hide_label;
   int boxed;
   int hidden;
   int padding;
+  int padding_x;
+  int padding_y;
+  int padding_left;
+  int padding_right;
+  int padding_top;
+  int padding_bottom;
   int flex;
   int justify;
+  int align;
   aPoint2i_t grid_size; //row/col
   aPoint2f_t grid_pos;  //x,y
   int texture;
@@ -245,6 +254,10 @@ typedef struct _widget_t
   aPoint3f_t text_offset;
   char* calc_x;
   char* calc_y;
+  char* calc_w;
+  char* calc_h;
+  aSoundEffect_t* click_sound;
+  aSoundEffect_t* hover_sound;
   struct _widget_t* next;
   struct _widget_t* prev;
   void (*action)( void );
@@ -467,11 +480,11 @@ typedef enum {
  *
  * @note Call a_AudioFreeSound() when done to free memory
  */
-typedef struct {
+struct _aSoundEffect_t {
   char filename[MAX_FILENAME_LENGTH];  /**< Path to the sound file */
   Mix_Chunk* chunk;                    /**< SDL_mixer sound chunk */
   int default_volume;                  /**< Default volume (0-128) */
-} aSoundEffect_t;
+};
 
 /**
  * @brief Music handle

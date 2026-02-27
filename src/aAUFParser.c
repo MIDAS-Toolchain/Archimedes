@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 #include "Archimedes.h"
 
@@ -32,6 +33,17 @@ static aRectf_t calc_this_rect;
 /* error context — updated as we parse each line */
 static const char* g_auf_filename = NULL;
 static int g_auf_line = 0;
+
+static void auf_error( const char* fmt, ... )
+{
+  va_list args;
+  fprintf( stderr, "%s:%d\n  ", g_auf_filename, g_auf_line );
+  va_start( args, fmt );
+  vfprintf( stderr, fmt, args );
+  va_end( args );
+  fprintf( stderr, "\n" );
+  exit( 1 );
+}
 
 static void calc_skip_ws( const char* str, int* pos )
 {
@@ -77,9 +89,8 @@ static double calc_factor( const char* str, int* pos )
     }
     if ( calc_match( str + *pos, "SCREEN.", 7 ) )
     {
-      printf( "%s:%d\n  AUF calc error: unknown SCREEN property '%c'\n"
-              "  valid: SCREEN.w, SCREEN.h\n", g_auf_filename, g_auf_line, str[*pos + 7] );
-      exit( 1 );
+      auf_error( "AUF calc error: unknown SCREEN property '%c'\n"
+                "  valid: SCREEN.w, SCREEN.h", str[*pos + 7] );
     }
 
     /* THIS.w / THIS.h / THIS.x / THIS.y */
@@ -122,24 +133,24 @@ static double calc_factor( const char* str, int* pos )
       if ( str[*pos] == '.' )
       {
         (*pos)++;
-        char prop = str[*pos];
-        if ( prop && isalpha( (unsigned char)prop ) )
+        int prop_start = *pos;
+        while ( str[*pos] && ( isalnum( (unsigned char)str[*pos] ) || str[*pos] == '_'
+                || ( str[*pos] == '-' && !isdigit( (unsigned char)str[*pos + 1] ) ) ) )
           (*pos)++;
 
-        int len = *pos - start;
-        char buf[256];
-        if ( len >= 256 ) len = 255;
-        memcpy( buf, str + start, len );
-        buf[len] = '\0';
+        /* extract widget name */
+        int name_len = prop_start - 1 - start;
+        char widget_buf[256];
+        if ( name_len >= 256 ) name_len = 255;
+        memcpy( widget_buf, str + start, name_len );
+        widget_buf[name_len] = '\0';
 
-        char* dot = strrchr( buf, '.' );
-        *dot = '\0';
-        if ( prop != 'w' && prop != 'h' && prop != 'x' && prop != 'y' )
-        {
-          printf( "%s:%d\n  AUF calc error: unknown property '%c' on widget '%s'\n"
-                  "  valid properties: .w, .h, .x, .y\n", g_auf_filename, g_auf_line, prop, buf );
-          exit( 1 );
-        }
+        /* extract property name */
+        int prop_len = *pos - prop_start;
+        char prop_buf[256];
+        if ( prop_len >= 256 ) prop_len = 255;
+        memcpy( prop_buf, str + prop_start, prop_len );
+        prop_buf[prop_len] = '\0';
 
         /* During initial parse, widgets don't exist yet — defer */
         if ( !calc_this_available )
@@ -148,20 +159,35 @@ static double calc_factor( const char* str, int* pos )
           return 0;
         }
 
-        aWidget_t* ref = a_GetWidget( buf );
+        aWidget_t* ref = a_GetWidget( widget_buf );
         if ( ref == NULL )
         {
-          printf( "%s:%d\n  AUF calc error: widget '%s' not found (must be defined before this widget)\n", g_auf_filename, g_auf_line, buf );
-          exit( 1 );
+          auf_error( "AUF calc error: widget '%s' not found (must be defined before this widget)", widget_buf );
         }
-        switch ( prop )
-        {
-          case 'w': return ref->rect.w;
-          case 'h': return ref->rect.h;
-          case 'x': return ref->rect.x;
-          case 'y': return ref->rect.y;
-          default: return 0;
-        }
+
+        if ( strcmp( prop_buf, "w" ) == 0 )              return ref->rect.w;
+        if ( strcmp( prop_buf, "h" ) == 0 )              return ref->rect.h;
+        if ( strcmp( prop_buf, "x" ) == 0 )              return ref->rect.x;
+        if ( strcmp( prop_buf, "y" ) == 0 )              return ref->rect.y;
+        if ( strcmp( prop_buf, "padding" ) == 0 )        return ref->padding;
+        if ( strcmp( prop_buf, "padding_x" ) == 0 ||
+             strcmp( prop_buf, "padding-x" ) == 0 )      return ref->padding_x;
+        if ( strcmp( prop_buf, "padding_y" ) == 0 ||
+             strcmp( prop_buf, "padding-y" ) == 0 )      return ref->padding_y;
+        if ( strcmp( prop_buf, "padding_left" ) == 0 ||
+             strcmp( prop_buf, "padding-left" ) == 0 )   return ref->padding_left;
+        if ( strcmp( prop_buf, "padding_right" ) == 0 ||
+             strcmp( prop_buf, "padding-right" ) == 0 )  return ref->padding_right;
+        if ( strcmp( prop_buf, "padding_top" ) == 0 ||
+             strcmp( prop_buf, "padding-top" ) == 0 )    return ref->padding_top;
+        if ( strcmp( prop_buf, "padding_bottom" ) == 0 ||
+             strcmp( prop_buf, "padding-bottom" ) == 0 ) return ref->padding_bottom;
+        if ( strcmp( prop_buf, "hidden" ) == 0 )         return ref->hidden;
+        if ( strcmp( prop_buf, "boxed" ) == 0 )          return ref->boxed;
+
+        auf_error( "AUF calc error: unknown property '%s' on widget '%s'\n"
+                  "  valid: w, h, x, y, padding, padding-x/y, padding-left/right/top/bottom, hidden, boxed",
+                  prop_buf, widget_buf );
       }
 
       int len = *pos - start;
@@ -170,10 +196,9 @@ static double calc_factor( const char* str, int* pos )
       memcpy( buf, str + start, len );
       buf[len] = '\0';
 
-      printf( "%s:%d\n  AUF calc error: unknown constant '%s'\n"
-              "  known: SCREEN.w, SCREEN.h, THIS.w/h/x/y, or widget_name.w/h/x/y\n"
-              "  did you forget a property? e.g. %s.w, %s.x\n", g_auf_filename, g_auf_line, buf, buf, buf );
-      exit( 1 );
+      auf_error( "AUF calc error: unknown constant '%s'\n"
+                "  known: SCREEN.w, SCREEN.h, THIS.w/h/x/y, or widget_name.property\n"
+                "  did you forget a property? e.g. %s.w, %s.padding", buf, buf, buf );
     }
   }
 
@@ -181,8 +206,7 @@ static double calc_factor( const char* str, int* pos )
   double val = strtod( str + *pos, &end );
   if ( end == str + *pos )
   {
-    printf( "%s:%d\n  AUF calc error: expected a number but got '%.20s'\n", g_auf_filename, g_auf_line, str + *pos );
-    exit( 1 );
+    auf_error( "AUF calc error: expected a number but got '%.20s'", str + *pos );
   }
   *pos = (int)( end - str );
   return val;
@@ -200,7 +224,7 @@ static double calc_term( const char* str, int* pos )
     if ( op == '*' ) val *= rhs;
     else
     {
-      if ( rhs == 0 ) { printf( "%s:%d\n  AUF calc error: division by zero\n", g_auf_filename, g_auf_line ); exit( 1 ); }
+      if ( rhs == 0 ) { auf_error( "AUF calc error: division by zero" ); }
       val /= rhs;
     }
     calc_skip_ws( str, pos );
@@ -333,135 +357,130 @@ static int ParserLineToRoot( aAUF_t* root, char** line, int nl_count )
 
 static int ParserWidgetToNode( aAUFNode_t* node, char** line, int nl_count, int idx )
 {
-  int count = 0;
-  for ( int i = idx; i < nl_count; i++ )
+  int i;
+  for ( i = idx; i < nl_count; i++ )
   {
-    if ( line[i] != NULL && count < MAX_WIDGET_COUNT )
+    if ( line[i] == NULL ) continue;
+    if ( widget_count >= MAX_WIDGET_COUNT )
     {
-      char* string = line[i];
-      int str_len  = strlen( string );
-      g_auf_line = i + 1;
+      LOG( "CRASH: Do you really have 256 widgets? Or are you in a infinite loop because did you forget to add a newline at the end of the file?" );
+      printf("widget_count: %d\n", widget_count);
+      exit(1);
+    }
 
-      switch ( string[0] )
-      {
+    char* string = line[i];
+    int str_len  = strlen( string );
+    g_auf_line = i + 1;
 
-      case '[':
+    switch ( string[0] )
+    {
+
+    case '[':
       if ( string[1] == '[' )
       {
-      aAUFNode_t* child = a_AUFNodeCreation();
-      child->line_number = i + 1;
-      widget_count++;
-      handle_widget_definition( child, string );
+        aAUFNode_t* child = a_AUFNodeCreation();
+        child->line_number = i + 1;
+        widget_count++;
+        handle_widget_definition( child, string );
 
-      if ( g_container == NULL )
-      {
-      aAUFNode_t* container = a_AUFNodeCreation();
-      container->string = a_STR_NDUP( "container", MAX_NAME_LENGTH );
-      widget_count++;
-      a_AUFNodeAddChild( node, container );
-      g_container = container;
-      g_temp_container = container;
-      }
-      
-      else
-      {
-      while ( g_container->next != NULL )
-      {
-        g_container = g_container->next;
-      }
-      }
-      
-      g_temp_container->value_int++;
-      a_AUFNodeAddChild( g_container, child );
+        if ( g_container == NULL )
+        {
+          aAUFNode_t* container = a_AUFNodeCreation();
+          container->string = a_STR_NDUP( "container", MAX_NAME_LENGTH );
+          widget_count++;
+          a_AUFNodeAddChild( node, container );
+          g_container = container;
+          g_temp_container = container;
+        }
 
-      int next_i = ParserWidgetToNode( child, line, nl_count, i+1 );
-      i = next_i - 1;
+        else
+        {
+          while ( g_container->next != NULL )
+          {
+            g_container = g_container->next;
+          }
+        }
+
+        g_temp_container->value_int++;
+        a_AUFNodeAddChild( g_container, child );
+
+        int next_i = ParserWidgetToNode( child, line, nl_count, i+1 );
+        i = next_i - 1;
       }
 
       return i;
-      
-      case '(':
+
+    case '(':
+    {
+      /* check if parentheses are balanced; if not, join next lines */
+      int depth = 0;
+      for ( int c = 0; c < str_len; c++ )
       {
-        /* check if parentheses are balanced; if not, join next lines */
-        int depth = 0;
-        for ( int c = 0; c < str_len; c++ )
+        if ( string[c] == '(' ) depth++;
+        else if ( string[c] == ')' ) depth--;
+      }
+
+      if ( depth > 0 )
+      {
+        int total_len = str_len;
+        int end = i;
+
+        while ( depth > 0 && end + 1 < nl_count )
         {
-          if ( string[c] == '(' ) depth++;
-          else if ( string[c] == ')' ) depth--;
+          end++;
+          if ( line[end] == NULL ) continue;
+          int ln = strlen( line[end] );
+          total_len += ln;
+          for ( int c = 0; c < ln; c++ )
+          {
+            if ( line[end][c] == '(' ) depth++;
+            else if ( line[end][c] == ')' ) depth--;
+          }
         }
 
         if ( depth > 0 )
         {
-          int total_len = str_len;
-          int end = i;
-
-          while ( depth > 0 && end + 1 < nl_count )
-          {
-            end++;
-            if ( line[end] == NULL ) continue;
-            int ln = strlen( line[end] );
-            total_len += ln;
-            for ( int c = 0; c < ln; c++ )
-            {
-              if ( line[end][c] == '(' ) depth++;
-              else if ( line[end][c] == ')' ) depth--;
-            }
-          }
-
-          if ( depth > 0 )
-          {
-            printf( "%s:%d\n  AUF format error: unbalanced parentheses (never closed)\n"
-                    "  starts at: %.40s\n", g_auf_filename, g_auf_line, string );
-            exit( 1 );
-          }
-
-          char* joined = malloc( total_len + 1 );
-          if ( joined == NULL )
-          {
-            printf( "Failed to allocate memory for multi-line join\n" );
-            exit( 1 );
-          }
-          memcpy( joined, string, str_len );
-          int pos = str_len;
-          for ( int j = i + 1; j <= end; j++ )
-          {
-            if ( line[j] == NULL ) continue;
-            int ln = strlen( line[j] );
-            memcpy( joined + pos, line[j], ln );
-            pos += ln;
-          }
-          joined[pos] = '\0';
-
-          handle_parenthesis( node, joined, pos );
-          widget_count++;
-          free( joined );
-          i = end;
-          continue;
+          auf_error( "AUF format error: unbalanced parentheses (never closed)\n"
+                    "  starts at: %.40s", string );
         }
 
-        handle_parenthesis( node, string, str_len );
+        char* joined = malloc( total_len + 1 );
+        if ( joined == NULL )
+        {
+          printf( "Failed to allocate memory for multi-line join\n" );
+          exit( 1 );
+        }
+        memcpy( joined, string, str_len );
+        int pos = str_len;
+        for ( int j = i + 1; j <= end; j++ )
+        {
+          if ( line[j] == NULL ) continue;
+          int ln = strlen( line[j] );
+          memcpy( joined + pos, line[j], ln );
+          pos += ln;
+        }
+        joined[pos] = '\0';
+
+        handle_parenthesis( node, joined, pos );
         widget_count++;
+        free( joined );
+        i = end;
         continue;
       }
 
-      default:
+      handle_parenthesis( node, string, str_len );
+      widget_count++;
+      continue;
+    }
+
+    default:
       handle_char( node, string, str_len );
       widget_count++;
       continue;
-      }
     }
-
-    count = i;
   }
 
-  if ( widget_count >= MAX_WIDGET_COUNT )
-  {
-    LOG( "CRASH: Do you really have 256 widgets? Or are you in a infinite loop because did you forget to add a newline at the end of the file?" );
-    printf("widget_count: %d\n", widget_count);
-    exit(1);
-  }
-
-  return count;
+  return i;
 }
 
 static int handle_parenthesis( aAUFNode_t* root, char* string, int str_len )
@@ -477,28 +496,25 @@ static int handle_parenthesis( aAUFNode_t* root, char* string, int str_len )
   char* colon = strchr( string, ':' );
   if ( colon == NULL )
   {
-    printf( "%s:%d\n  AUF format error: missing ':' separator\n"
-            "  expected (key,key):(value,value)\n"
-            "  got: %.60s\n", g_auf_filename, g_auf_line, string );
-    exit( 1 );
+    auf_error( "AUF format error: missing ':' separator\n"
+              "  expected (key,key):(value,value)\n"
+              "  got: %.60s", string );
   }
 
   char* first_comma = strchr( string, ',' );
   if ( first_comma == NULL || first_comma > colon )
   {
-    printf( "%s:%d\n  AUF format error: missing ',' between keys\n"
-            "  expected (key,key):(value,value)\n"
-            "  got: %.60s\n", g_auf_filename, g_auf_line, string );
-    exit( 1 );
+    auf_error( "AUF format error: missing ',' between keys\n"
+              "  expected (key,key):(value,value)\n"
+              "  got: %.60s", string );
   }
 
   char* value_comma = strchr( colon, ',' );
   if ( value_comma == NULL )
   {
-    printf( "%s:%d\n  AUF format error: missing ',' between values\n"
-            "  expected (key,key):(value,value)\n"
-            "  got: %.60s\n", g_auf_filename, g_auf_line, string );
-    exit( 1 );
+    auf_error( "AUF format error: missing ',' between values\n"
+              "  expected (key,key):(value,value)\n"
+              "  got: %.60s", string );
   }
 
   aAUFNode_t* x_AUF = a_AUFNodeCreation();
@@ -517,10 +533,9 @@ static int handle_parenthesis( aAUFNode_t* root, char* string, int str_len )
 
   if ( !valid_keys )
   {
-    printf( "%s:%d\n  AUF format error: unknown key pair '(%s,%s)'\n"
-            "  valid pairs: (x,y), (w,h), (text_x,text_y), (row,col), (grid_x,grid_y)\n",
-            g_auf_filename, g_auf_line, x_AUF->string, y_AUF->string );
-    exit( 1 );
+    auf_error( "AUF format error: unknown key pair '(%s,%s)'\n"
+              "  valid pairs: (x,y), (w,h), (text_x,text_y), (row,col), (grid_x,grid_y)",
+              x_AUF->string, y_AUF->string );
   }
 
   char* x_value_start = colon;
@@ -580,9 +595,8 @@ static int handle_char( aAUFNode_t* root, char* string, int str_len )
   char* str_end = strchr( string, ':' );
   if ( str_end == NULL )
   {
-    printf( "%s:%d\n  AUF format error: missing ':' separator\n"
-            "  got: %.60s\n", g_auf_filename, g_auf_line, string );
-    exit( 1 );
+    auf_error( "AUF format error: missing ':' separator\n"
+              "  got: %.60s", string );
   }
   aAUFNode_t* new_AUF = a_AUFNodeCreation();
   int count = 0;
@@ -693,14 +707,35 @@ static int handle_char( aAUFNode_t* root, char* string, int str_len )
 
     default:
       {
-        double v = auf_parse_numeric( val, NULL );
-        if ( v != (int)v )
+        int deferred = 0;
+        double v = auf_parse_numeric( val, &deferred );
+
+        if ( deferred )
         {
-          new_AUF->value_double = v;
+          /* calc() with widget references — store expression for later resolution */
+          new_AUF->value_string = a_STR_NDUP( val, strlen( val ) );
         }
         else
         {
-          new_AUF->value_int = (int)v;
+          if ( v != (int)v )
+          {
+            new_AUF->value_double = v;
+          }
+          else
+          {
+            new_AUF->value_int = (int)v;
+          }
+
+          /* store raw value if it contains letters (e.g. widget_name.bg reference) */
+          int has_alpha = 0;
+          for ( const char* p = val; *p; p++ )
+          {
+            if ( isalpha( (unsigned char)*p ) ) { has_alpha = 1; break; }
+          }
+          if ( has_alpha )
+          {
+            new_AUF->value_string = a_STR_NDUP( val, strlen( val ) );
+          }
         }
       }
 

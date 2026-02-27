@@ -36,9 +36,9 @@ static void DrawContainerWidget( aWidget_t* w );
 static void DoInputWidget( void );
 static void DoControlWidget( void );
 static aWidget_t* GetCurrentWidget( void );
-static int WithinRange( int x, int y, aRectf_t rect );
+static int WithinRangePadded( int x, int y, aWidget_t* w );
 static void ClearWidgetsState( void );
-static void ContainerWidgetFree( aContainerWidget_t* con );
+static void ContainerWidgetFree( aContainerWidget_t* con, aWidget_t* parent );
 
 static void WidgetColor( aWidget_t* w, aColor_t* c );
 
@@ -60,6 +60,112 @@ static int pending_press_on_release; /* 0 = on-press (timer), 1 = on-release (wa
 static int last_mouse_x;
 static int last_mouse_y;
 static int mouse_moved;
+static aWidget_t* last_hovered_widget = NULL;
+
+static aSoundEffect_t* load_widget_sound( aAUFNode_t* node )
+{
+  if ( node == NULL || node->value_string == NULL || node->value_string[0] == '\0' )
+    return NULL;
+
+  aSoundEffect_t* snd = malloc( sizeof( aSoundEffect_t ) );
+  if ( snd == NULL ) return NULL;
+
+  memset( snd, 0, sizeof( aSoundEffect_t ) );
+  if ( a_AudioLoadSound( node->value_string, snd ) < 0 )
+  {
+    free( snd );
+    return NULL;
+  }
+  return snd;
+}
+
+static int resolve_color_ref( aAUFNode_t* node, aColor_t* out )
+{
+  if ( node == NULL || node->value_string == NULL ) return 0;
+
+  char* dot = strrchr( node->value_string, '.' );
+  if ( dot == NULL ) return 0;
+
+  char widget_name[MAX_FILENAME_LENGTH];
+  size_t len = dot - node->value_string;
+  if ( len == 0 || len >= MAX_FILENAME_LENGTH ) return 0;
+  memcpy( widget_name, node->value_string, len );
+  widget_name[len] = '\0';
+
+  const char* field = dot + 1;
+  aWidget_t* ref = a_GetWidget( widget_name );
+  if ( ref == NULL ) return 0;
+
+  if ( strcmp( field, "fg" ) == 0 )      *out = ref->fg;
+  else if ( strcmp( field, "bg" ) == 0 ) *out = ref->bg;
+  else if ( strcmp( field, "ag" ) == 0 ) *out = ref->ag;
+  else return 0;
+
+  return 1;
+}
+
+static int resolve_int_ref( aAUFNode_t* node )
+{
+  if ( node == NULL ) return 0;
+
+  if ( node->value_string != NULL )
+  {
+    /* calc() expression — resolve with widget references */
+    if ( strncmp( node->value_string, "calc(", 5 ) == 0 )
+    {
+      aRectf_t dummy = {0};
+      return (int)a_CalcResolveWithThis( node->value_string, dummy );
+    }
+
+    char* dot = strrchr( node->value_string, '.' );
+    if ( dot != NULL )
+    {
+      char widget_name[MAX_FILENAME_LENGTH];
+      size_t len = dot - node->value_string;
+      if ( len > 0 && len < MAX_FILENAME_LENGTH )
+      {
+        memcpy( widget_name, node->value_string, len );
+        widget_name[len] = '\0';
+
+        const char* field = dot + 1;
+        aWidget_t* ref = a_GetWidget( widget_name );
+        if ( ref != NULL )
+        {
+          if ( strcmp( field, "padding" ) == 0 )        return ref->padding;
+          if ( strcmp( field, "padding_x" ) == 0 ||
+               strcmp( field, "padding-x" ) == 0 )      return ref->padding_x;
+          if ( strcmp( field, "padding_y" ) == 0 ||
+               strcmp( field, "padding-y" ) == 0 )      return ref->padding_y;
+          if ( strcmp( field, "padding_left" ) == 0 ||
+               strcmp( field, "padding-left" ) == 0 )   return ref->padding_left;
+          if ( strcmp( field, "padding_right" ) == 0 ||
+               strcmp( field, "padding-right" ) == 0 )  return ref->padding_right;
+          if ( strcmp( field, "padding_top" ) == 0 ||
+               strcmp( field, "padding-top" ) == 0 )    return ref->padding_top;
+          if ( strcmp( field, "padding_bottom" ) == 0 ||
+               strcmp( field, "padding-bottom" ) == 0 ) return ref->padding_bottom;
+          if ( strcmp( field, "hidden" ) == 0 )         return ref->hidden;
+          if ( strcmp( field, "boxed" ) == 0 )          return ref->boxed;
+        }
+      }
+    }
+  }
+
+  return node->value_int;
+}
+
+static void resolve_padding( aWidget_t* w, int* left, int* right, int* top, int* bottom )
+{
+  int base = w->padding;
+  int px   = w->padding_x;
+  int py   = w->padding_y;
+
+  /* most specific wins: direction > axis > base */
+  *left   = w->padding_left   ? w->padding_left   : ( px ? px : base );
+  *right  = w->padding_right  ? w->padding_right  : ( px ? px : base );
+  *top    = w->padding_top    ? w->padding_top    : ( py ? py : base );
+  *bottom = w->padding_bottom ? w->padding_bottom : ( py ? py : base );
+}
 
 void a_DoWidget( void )
 {
@@ -122,6 +228,13 @@ void a_DoWidget( void )
         current->state = WI_PRESSED;
         app.active_widget = current;
 
+        if ( current->click_sound != NULL )
+        {
+          aAudioOptions_t opts = { .channel = AUDIO_CHANNEL_UI_CLICK, .volume = -1,
+                                   .loops = 0, .fade_ms = 0, .interrupt = 1 };
+          a_AudioPlaySound( current->click_sound, &opts );
+        }
+
         pending_press_widget = current;
         pending_press_source = 0;
         pending_press_on_release = current->on_release;
@@ -135,9 +248,20 @@ void a_DoWidget( void )
       }
 
       /* Mouse hover — only if mouse actually moved */
-      if ( mouse_moved && WithinRange( app.mouse.x, app.mouse.y, current->rect ) )
+      if ( mouse_moved && WithinRangePadded( app.mouse.x, app.mouse.y, current ) )
       {
         current->state = WI_HOVERING;
+
+        if ( current != last_hovered_widget )
+        {
+          last_hovered_widget = current;
+          if ( current->hover_sound != NULL )
+          {
+            aAudioOptions_t opts = { .channel = AUDIO_CHANNEL_UI_HOVER, .volume = -1,
+                                     .loops = 0, .fade_ms = 0, .interrupt = 0 };
+            a_AudioPlaySound( current->hover_sound, &opts );
+          }
+        }
       }
     }
 
@@ -215,6 +339,17 @@ void a_DoWidget( void )
       if ( focused->hidden == 0 )
       {
         focused->state = WI_HOVERING;
+
+        if ( focused != last_hovered_widget )
+        {
+          last_hovered_widget = focused;
+          if ( focused->hover_sound != NULL )
+          {
+            aAudioOptions_t opts = { .channel = AUDIO_CHANNEL_UI_HOVER, .volume = -1,
+                                     .loops = 0, .fade_ms = 0, .interrupt = 0 };
+            a_AudioPlaySound( focused->hover_sound, &opts );
+          }
+        }
       }
 
       if ( focused->type == WT_SELECT || focused->type == WT_SLIDER )
@@ -262,6 +397,14 @@ void a_DoWidget( void )
         else
         {
           focused->state = WI_PRESSED;
+
+          if ( focused->click_sound != NULL )
+          {
+            aAudioOptions_t opts = { .channel = AUDIO_CHANNEL_UI_CLICK, .volume = -1,
+                                     .loops = 0, .fade_ms = 0, .interrupt = 1 };
+            a_AudioPlaySound( focused->click_sound, &opts );
+          }
+
           pending_press_widget = focused;
           pending_press_source = 1;
           pending_press_on_release = focused->on_release;
@@ -369,6 +512,7 @@ void a_WidgetsInit( const char* filename )
   mouse_moved = 0;
   last_mouse_x = -1;
   last_mouse_y = -1;
+  last_hovered_widget = NULL;
 
   if ( press_timer == NULL )
   {
@@ -386,6 +530,16 @@ aWidget_t* a_GetWidget( const char* name )
     if ( strcmp( w->name, name ) == 0 )
     {
       return w;
+    }
+
+    if ( w->type == WT_CONTAINER && w->data != NULL )
+    {
+      aContainerWidget_t* con = (aContainerWidget_t*)w->data;
+      for ( int i = 0; i < con->num_components; i++ )
+      {
+        if ( strcmp( con->components[i].name, name ) == 0 )
+          return &con->components[i];
+      }
     }
   }
 
@@ -578,6 +732,13 @@ static void ChangeWidgetValue( const int value )
     default:
       break;
   }
+
+  if ( app.active_widget->click_sound != NULL )
+  {
+    aAudioOptions_t opts = { .channel = AUDIO_CHANNEL_UI_CLICK, .volume = -1,
+                             .loops = 0, .fade_ms = 0, .interrupt = 1 };
+    a_AudioPlaySound( app.active_widget->click_sound, &opts );
+  }
 }
 
 /**
@@ -611,12 +772,27 @@ static void CreateWidget( aAUFNode_t* root )
     widget_tail = w;
 
     aAUFNode_t* temp_label   = a_AUFGetObjectItem( root, "label" );
-    aAUFNode_t* temp_toggle_label   = a_AUFGetObjectItem( root, "toggle_label" );
+    aAUFNode_t* temp_hide_label   = a_AUFGetObjectItem( root, "hide_label" );
     aAUFNode_t* temp_x       = a_AUFGetObjectItem( root, "x" );
     aAUFNode_t* temp_y       = a_AUFGetObjectItem( root, "y" );
     aAUFNode_t* temp_boxed   = a_AUFGetObjectItem( root, "boxed" );
     aAUFNode_t* temp_hidden  = a_AUFGetObjectItem( root, "hidden" );
-    aAUFNode_t* temp_padding = a_AUFGetObjectItem( root, "padding" );
+    aAUFNode_t* temp_padding        = a_AUFGetObjectItem( root, "padding" );
+    aAUFNode_t* temp_padding_x      = a_AUFGetObjectItem( root, "padding_x" );
+    aAUFNode_t* temp_padding_y      = a_AUFGetObjectItem( root, "padding_y" );
+    aAUFNode_t* temp_padding_left   = a_AUFGetObjectItem( root, "padding_left" );
+    aAUFNode_t* temp_padding_right  = a_AUFGetObjectItem( root, "padding_right" );
+    aAUFNode_t* temp_padding_top    = a_AUFGetObjectItem( root, "padding_top" );
+    aAUFNode_t* temp_padding_bottom = a_AUFGetObjectItem( root, "padding_bottom" );
+    /* also accept hyphenated forms (padding-left, etc.) */
+    if ( !temp_padding_x )      temp_padding_x      = a_AUFGetObjectItem( root, "padding-x" );
+    if ( !temp_padding_y )      temp_padding_y      = a_AUFGetObjectItem( root, "padding-y" );
+    if ( !temp_padding_left )   temp_padding_left   = a_AUFGetObjectItem( root, "padding-left" );
+    if ( !temp_padding_right )  temp_padding_right  = a_AUFGetObjectItem( root, "padding-right" );
+    if ( !temp_padding_top )    temp_padding_top    = a_AUFGetObjectItem( root, "padding-top" );
+    if ( !temp_padding_bottom ) temp_padding_bottom = a_AUFGetObjectItem( root, "padding-bottom" );
+    aAUFNode_t* temp_click_sound = a_AUFGetObjectItem( root, "click_sound" );
+    aAUFNode_t* temp_hover_sound = a_AUFGetObjectItem( root, "hover_sound" );
     aAUFNode_t* temp_texture = a_AUFGetObjectItem( root, "texture" );
     aAUFNode_t* temp_fg      = a_AUFGetObjectItem( root, "fg" );
     aAUFNode_t* temp_bg      = a_AUFGetObjectItem( root, "bg" );
@@ -662,9 +838,9 @@ static void CreateWidget( aAUFNode_t* root )
       STRCPY( w->label, temp_label->value_string );
     }
     
-    if ( temp_toggle_label != NULL )
+    if ( temp_hide_label != NULL )
     {
-      w->toggle_label = temp_toggle_label->value_int;
+      w->hide_label = temp_hide_label->value_int;
     }
 
     w->type = root->type;
@@ -716,10 +892,23 @@ static void CreateWidget( aAUFNode_t* root )
     }
     
     if ( temp_padding != NULL )
-    {
-      w->padding = temp_padding->value_int;
-    }
-    
+      w->padding = resolve_int_ref( temp_padding );
+    if ( temp_padding_x != NULL )
+      w->padding_x = resolve_int_ref( temp_padding_x );
+    if ( temp_padding_y != NULL )
+      w->padding_y = resolve_int_ref( temp_padding_y );
+    if ( temp_padding_left != NULL )
+      w->padding_left = resolve_int_ref( temp_padding_left );
+    if ( temp_padding_right != NULL )
+      w->padding_right = resolve_int_ref( temp_padding_right );
+    if ( temp_padding_top != NULL )
+      w->padding_top = resolve_int_ref( temp_padding_top );
+    if ( temp_padding_bottom != NULL )
+      w->padding_bottom = resolve_int_ref( temp_padding_bottom );
+
+    w->click_sound = load_widget_sound( temp_click_sound );
+    w->hover_sound = load_widget_sound( temp_hover_sound );
+
     if ( temp_texture != NULL )
     {
       w->texture = temp_texture->value_int;
@@ -727,54 +916,89 @@ static void CreateWidget( aAUFNode_t* root )
     
     if ( temp_w != NULL )
     {
-      w->rect.w = temp_w->value_int;
+      if ( temp_w->value_string != NULL )
+      {
+        w->calc_w = malloc( strlen( temp_w->value_string ) + 1 );
+        if ( w->calc_w == NULL )
+        {
+          printf( "Failed to allocate memory for calc_w\n" );
+          exit( 1 );
+        }
+        strcpy( w->calc_w, temp_w->value_string );
+      }
+      else
+      {
+        w->rect.w = temp_w->value_int;
+      }
     }
-    
+
     if ( temp_h != NULL )
     {
-      w->rect.h = temp_h->value_int;
+      if ( temp_h->value_string != NULL )
+      {
+        w->calc_h = malloc( strlen( temp_h->value_string ) + 1 );
+        if ( w->calc_h == NULL )
+        {
+          printf( "Failed to allocate memory for calc_h\n" );
+          exit( 1 );
+        }
+        strcpy( w->calc_h, temp_h->value_string );
+      }
+      else
+      {
+        w->rect.h = temp_h->value_int;
+      }
     }
     
     w->action = NULL;
     
     if ( temp_fg != NULL )
     {
-      i = 0;
-      for ( node = temp_fg->child; node != NULL; node = node->next )
+      if ( !resolve_color_ref( temp_fg, &w->fg ) )
       {
-        fg[i++] = node->value_int;
+        i = 0;
+        for ( node = temp_fg->child; node != NULL; node = node->next )
+        {
+          fg[i++] = node->value_int;
+        }
+        w->fg.r = fg[0];
+        w->fg.g = fg[1];
+        w->fg.b = fg[2];
+        w->fg.a = fg[3];
       }
-      w->fg.r = fg[0];
-      w->fg.g = fg[1];
-      w->fg.b = fg[2];
-      w->fg.a = fg[3];
     }
-    
+
     if ( temp_bg != NULL )
     {
-      i = 0;
-      for ( node = temp_bg->child; node != NULL; node = node->next )
+      if ( !resolve_color_ref( temp_bg, &w->bg ) )
       {
-        bg[i++] = node->value_int;
+        i = 0;
+        for ( node = temp_bg->child; node != NULL; node = node->next )
+        {
+          bg[i++] = node->value_int;
+        }
+        w->bg.r = bg[0];
+        w->bg.g = bg[1];
+        w->bg.b = bg[2];
+        w->bg.a = bg[3];
       }
-      w->bg.r = bg[0];
-      w->bg.g = bg[1];
-      w->bg.b = bg[2];
-      w->bg.a = bg[3];
     }
 
     if ( temp_ag != NULL )
     {
-      int ag[4] = {0};
-      i = 0;
-      for ( node = temp_ag->child; node != NULL; node = node->next )
+      if ( !resolve_color_ref( temp_ag, &w->ag ) )
       {
-        ag[i++] = node->value_int;
+        int ag[4] = {0};
+        i = 0;
+        for ( node = temp_ag->child; node != NULL; node = node->next )
+        {
+          ag[i++] = node->value_int;
+        }
+        w->ag.r = ag[0];
+        w->ag.g = ag[1];
+        w->ag.b = ag[2];
+        w->ag.a = ag[3];
       }
-      w->ag.r = ag[0];
-      w->ag.g = ag[1];
-      w->ag.b = ag[2];
-      w->ag.a = ag[3];
       w->has_ag = 1;
     }
 
@@ -859,8 +1083,24 @@ static void CreateWidget( aAUFNode_t* root )
     }
 
     /* Resolve deferred calc() expressions (THIS / widget references) */
-    if ( w->type != WT_CONTAINER && ( w->calc_x != NULL || w->calc_y != NULL ) )
+    if ( w->type != WT_CONTAINER &&
+         ( w->calc_x != NULL || w->calc_y != NULL ||
+           w->calc_w != NULL || w->calc_h != NULL ) )
     {
+      /* resolve w/h first so THIS.w / THIS.h are available for x/y */
+      if ( w->calc_w != NULL )
+      {
+        w->rect.w = (int)a_CalcResolveWithThis( w->calc_w, w->rect );
+        free( w->calc_w );
+        w->calc_w = NULL;
+      }
+      if ( w->calc_h != NULL )
+      {
+        w->rect.h = (int)a_CalcResolveWithThis( w->calc_h, w->rect );
+        free( w->calc_h );
+        w->calc_h = NULL;
+      }
+
       int uses_this = ( w->calc_x != NULL && strstr( w->calc_x, "THIS" ) != NULL )
                    || ( w->calc_y != NULL && strstr( w->calc_y, "THIS" ) != NULL );
 
@@ -966,7 +1206,7 @@ static void CreateSelectWidget( aWidget_t* w, aAUFNode_t* root )
     }
   }
   
-  if ( w->toggle_label )
+  if ( !w->hide_label )
   {
     a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
   }
@@ -1003,7 +1243,7 @@ static void CreateSliderWidget( aWidget_t* w, aAUFNode_t* root )
   s->wait_on_change = ( node_wait != NULL ) ? node_wait->value_int : 0;
   s->value = 0;
 
-  if ( w->toggle_label )
+  if ( !w->hide_label )
   {
     a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
   }
@@ -1042,7 +1282,7 @@ static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root )
 
   STRNCPY( input->text, "...", MAX_INPUT_LENGTH );
 
-  if ( w->toggle_label )
+  if ( !w->hide_label )
   {
     a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
   }
@@ -1072,7 +1312,7 @@ static void CreateOutputWidget( aWidget_t* w, aAUFNode_t* root )
   output->text           = malloc( output->max_length + 1 );
   memset( output->text, 0, output->max_length + 1 );
 
-  if ( w->toggle_label )
+  if ( !w->hide_label )
   {
     a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
   }
@@ -1101,7 +1341,7 @@ static void CreateControlWidget( aWidget_t* w )
   memset( control, 0, sizeof( aControlWidget_t ) );
 
   w->data = control;
-  if ( w->toggle_label )
+  if ( !w->hide_label )
   {
     a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
   }
@@ -1134,6 +1374,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   
   aAUFNode_t* node_flex      = a_AUFGetObjectItem( root, "flex" );
   aAUFNode_t* node_justify   = a_AUFGetObjectItem( root, "justify" );
+  aAUFNode_t* node_align     = a_AUFGetObjectItem( root, "align" );
   aAUFNode_t* node_row       = a_AUFGetObjectItem( root, "row" );
   aAUFNode_t* node_col       = a_AUFGetObjectItem( root, "col" );
   aAUFNode_t* node_grid_x    = a_AUFGetObjectItem( root, "grid_x" );
@@ -1161,6 +1402,11 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   if ( node_justify != NULL )
   {
     w->justify = node_justify->value_int;
+  }
+
+  if ( node_align != NULL )
+  {
+    w->align = node_align->value_int;
   }
 
   if ( node_row != NULL )
@@ -1209,6 +1455,20 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
     temp_x = w->rect.x;
     temp_y = w->rect.y;
 
+    /* resolve calc() for w/h before capturing user dimensions */
+    if ( w->calc_w != NULL )
+    {
+      w->rect.w = (int)a_CalcResolveWithThis( w->calc_w, w->rect );
+      free( w->calc_w );
+      w->calc_w = NULL;
+    }
+    if ( w->calc_h != NULL )
+    {
+      w->rect.h = (int)a_CalcResolveWithThis( w->calc_h, w->rect );
+      free( w->calc_h );
+      w->calc_h = NULL;
+    }
+
     int user_w = w->rect.w;
     int user_h = w->rect.h;
 
@@ -1218,12 +1478,27 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
     for ( node = node_container->child; node != NULL; node = node->next )
     {
       aAUFNode_t* node_label    = a_AUFGetObjectItem( node, "label" );
-      aAUFNode_t* node_toggle_label    = a_AUFGetObjectItem( node, "toggle_label" );
+      aAUFNode_t* node_hide_label    = a_AUFGetObjectItem( node, "hide_label" );
       aAUFNode_t* node_x        = a_AUFGetObjectItem( node, "x" );
       aAUFNode_t* node_y        = a_AUFGetObjectItem( node, "y" );
       aAUFNode_t* node_boxed    = a_AUFGetObjectItem( node, "boxed" );
       aAUFNode_t* node_hidden   = a_AUFGetObjectItem( node, "hidden" );
-      aAUFNode_t* node_padding  = a_AUFGetObjectItem( node, "padding" );
+      aAUFNode_t* node_padding        = a_AUFGetObjectItem( node, "padding" );
+      aAUFNode_t* node_padding_x      = a_AUFGetObjectItem( node, "padding_x" );
+      aAUFNode_t* node_padding_y      = a_AUFGetObjectItem( node, "padding_y" );
+      aAUFNode_t* node_padding_left   = a_AUFGetObjectItem( node, "padding_left" );
+      aAUFNode_t* node_padding_right  = a_AUFGetObjectItem( node, "padding_right" );
+      aAUFNode_t* node_padding_top    = a_AUFGetObjectItem( node, "padding_top" );
+      aAUFNode_t* node_padding_bottom = a_AUFGetObjectItem( node, "padding_bottom" );
+      /* also accept hyphenated forms */
+      if ( !node_padding_x )      node_padding_x      = a_AUFGetObjectItem( node, "padding-x" );
+      if ( !node_padding_y )      node_padding_y      = a_AUFGetObjectItem( node, "padding-y" );
+      if ( !node_padding_left )   node_padding_left   = a_AUFGetObjectItem( node, "padding-left" );
+      if ( !node_padding_right )  node_padding_right  = a_AUFGetObjectItem( node, "padding-right" );
+      if ( !node_padding_top )    node_padding_top    = a_AUFGetObjectItem( node, "padding-top" );
+      if ( !node_padding_bottom ) node_padding_bottom = a_AUFGetObjectItem( node, "padding-bottom" );
+      aAUFNode_t* node_click_sound = a_AUFGetObjectItem( node, "click_sound" );
+      aAUFNode_t* node_hover_sound = a_AUFGetObjectItem( node, "hover_sound" );
       aAUFNode_t* node_texture  = a_AUFGetObjectItem( node, "texture" );
       aAUFNode_t* node_fg       = a_AUFGetObjectItem( node, "fg" );
       aAUFNode_t* node_bg       = a_AUFGetObjectItem( node, "bg" );
@@ -1284,9 +1559,9 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
 
       }
 
-      if ( node_toggle_label != NULL )
+      if ( node_hide_label != NULL )
       {
-        current->toggle_label = node_toggle_label->value_int;
+        current->hide_label = node_hide_label->value_int;
       }
 
       current->type = node->type;
@@ -1302,56 +1577,80 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       }
 
       if ( node_padding != NULL )
-      {
-        current->padding = node_padding->value_int;
-      }
+        current->padding = resolve_int_ref( node_padding );
+      if ( node_padding_x != NULL )
+        current->padding_x = resolve_int_ref( node_padding_x );
+      if ( node_padding_y != NULL )
+        current->padding_y = resolve_int_ref( node_padding_y );
+      if ( node_padding_left != NULL )
+        current->padding_left = resolve_int_ref( node_padding_left );
+      if ( node_padding_right != NULL )
+        current->padding_right = resolve_int_ref( node_padding_right );
+      if ( node_padding_top != NULL )
+        current->padding_top = resolve_int_ref( node_padding_top );
+      if ( node_padding_bottom != NULL )
+        current->padding_bottom = resolve_int_ref( node_padding_bottom );
+
+      /* load child sounds, or inherit from container */
+      current->click_sound = load_widget_sound( node_click_sound );
+      current->hover_sound = load_widget_sound( node_hover_sound );
+      if ( current->click_sound == NULL ) current->click_sound = w->click_sound;
+      if ( current->hover_sound == NULL ) current->hover_sound = w->hover_sound;
 
       current->action = NULL;
 
       aAUFNode_t* node_1;
       if ( node_fg != NULL )
       {
-        int j;
-        j = 0;
-        for ( node_1 = node_fg->child; node_1 != NULL; node_1 = node_1->next )
+        if ( !resolve_color_ref( node_fg, &current->fg ) )
         {
-          fg[j++] = node_1->value_int;
+          int j = 0;
+          for ( node_1 = node_fg->child; node_1 != NULL; node_1 = node_1->next )
+          {
+            fg[j++] = node_1->value_int;
+          }
+          current->fg.r = fg[0];
+          current->fg.g = fg[1];
+          current->fg.b = fg[2];
+          current->fg.a = fg[3];
         }
-        current->fg.r = fg[0];
-        current->fg.g = fg[1];
-        current->fg.b = fg[2];
-        current->fg.a = fg[3];
       }
 
       if ( node_bg != NULL )
       {
-        int j = 0;
-        for ( node_1 = node_bg->child; node_1 != NULL; node_1 = node_1->next )
+        if ( !resolve_color_ref( node_bg, &current->bg ) )
         {
-          bg[j++] = node_1->value_int;
+          int j = 0;
+          for ( node_1 = node_bg->child; node_1 != NULL; node_1 = node_1->next )
+          {
+            bg[j++] = node_1->value_int;
+          }
+          current->bg.r = bg[0];
+          current->bg.g = bg[1];
+          current->bg.b = bg[2];
+          current->bg.a = bg[3];
         }
-        current->bg.r = bg[0];
-        current->bg.g = bg[1];
-        current->bg.b = bg[2];
-        current->bg.a = bg[3];
       }
 
       if ( node_ag != NULL )
       {
-        int ag[4] = {0};
-        int j = 0;
-        for ( node_1 = node_ag->child; node_1 != NULL; node_1 = node_1->next )
+        if ( !resolve_color_ref( node_ag, &current->ag ) )
         {
-          ag[j++] = node_1->value_int;
+          int ag[4] = {0};
+          int j = 0;
+          for ( node_1 = node_ag->child; node_1 != NULL; node_1 = node_1->next )
+          {
+            ag[j++] = node_1->value_int;
+          }
+          current->ag.r = ag[0];
+          current->ag.g = ag[1];
+          current->ag.b = ag[2];
+          current->ag.a = ag[3];
         }
-        current->ag.r = ag[0];
-        current->ag.g = ag[1];
-        current->ag.b = ag[2];
-        current->ag.a = ag[3];
         current->has_ag = 1;
       }
 
-      if ( current->toggle_label )
+      if ( !current->hide_label )
       {
         a_CalcTextDimensions( current->label, app.font_type,
                              &current->rect.w, &current->rect.h );
@@ -1359,10 +1658,12 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
 
       if ( w->flex == 1 || w->flex == 2 )
       {
-        current->rect.x = temp_x;
-        current->rect.y = temp_y;
+        int cpl, cpr, cpt, cpb;
+        resolve_padding( current, &cpl, &cpr, &cpt, &cpb );
 
-        //temp_x += ( current->w + container->spacing );
+        /* offset rect inward so the padding box starts at temp_x/temp_y */
+        current->rect.x = temp_x + cpl;
+        current->rect.y = temp_y + cpt;
       }
 
       else if ( w->flex == 3 )
@@ -1527,14 +1828,23 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       widget_effective_w = current_widget_max_x_extent - current->rect.x;
       widget_effective_h = current_widget_max_y_extent - current->rect.y;
 
-      if ( w->flex == 1 )
+      /* include padding in flex advancement and extent tracking */
       {
-        temp_x += ( widget_effective_w + container->spacing );
-      }
+        int cpl, cpr, cpt, cpb;
+        resolve_padding( current, &cpl, &cpr, &cpt, &cpb );
 
-      if ( w->flex == 2 )
-      {
-        temp_y += ( widget_effective_h + container->spacing );
+        if ( w->flex == 1 )
+        {
+          temp_x += ( cpl + widget_effective_w + cpr + container->spacing );
+        }
+
+        if ( w->flex == 2 )
+        {
+          temp_y += ( cpt + widget_effective_h + cpb + container->spacing );
+        }
+
+        current_widget_max_x_extent += cpr;
+        current_widget_max_y_extent += cpb;
       }
 
       if ( current_widget_max_x_extent > max_component_x_plus_w )
@@ -1559,7 +1869,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
       if ( user_w == 0 ) w->rect.w = content_w;
       if ( user_h == 0 ) w->rect.h = content_h;
 
-      /* apply justify: shift children along the main axis */
+      /* justify: shift children along the main axis */
       /* 0 = start (default), 1 = center, 2 = end */
       if ( w->justify > 0 )
       {
@@ -1573,12 +1883,33 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
           if ( w->justify == 1 ) offset = extra / 2;
           else if ( w->justify == 2 ) offset = extra;
 
-          aWidget_t* c = container->components;
-          while ( c != NULL )
+          for ( int j = 0; j < container->num_components; j++ )
           {
-            if ( w->flex == 1 ) c->rect.x += offset;
-            else                c->rect.y += offset;
-            c = c->next;
+            if ( w->flex == 1 ) container->components[j].rect.x += offset;
+            else                container->components[j].rect.y += offset;
+          }
+        }
+      }
+
+      /* align: position each child on the cross-axis */
+      /* 0 = start (default), 1 = center, 2 = end */
+      if ( w->align > 0 )
+      {
+        int cross_size = ( w->flex == 1 ) ? w->rect.h : w->rect.w;
+
+        for ( int j = 0; j < container->num_components; j++ )
+        {
+          aWidget_t* c = &container->components[j];
+          int child_size = ( w->flex == 1 ) ? c->rect.h : c->rect.w;
+          int extra = cross_size - child_size;
+          if ( extra > 0 )
+          {
+            int offset = 0;
+            if ( w->align == 1 ) offset = extra / 2;
+            else if ( w->align == 2 ) offset = extra;
+
+            if ( w->flex == 1 ) c->rect.y = w->rect.y + offset;
+            else                c->rect.x = w->rect.x + offset;
           }
         }
       }
@@ -1647,12 +1978,14 @@ static void DrawButtonWidget( aWidget_t* w )
   {
     if ( w->texture == 1 )
     {
+      int pl, pr, pt, pb;
+      resolve_padding( w, &pl, &pr, &pt, &pb );
       aRectf_t rect = (aRectf_t){
-        .x = ( w->rect.x - w->padding ),
-        .y = ( w->rect.y - w->padding ),
-        .w = ( w->rect.w + ( 2 * w->padding ) + ( 2 * w->text_offset.x ) ),
-        .h = ( w->rect.h + ( 2 * w->padding ) + ( 2 * w->text_offset.y ) ) };
-      
+        .x = ( w->rect.x - pl ),
+        .y = ( w->rect.y - pt ),
+        .w = ( w->rect.w + pl + pr + ( 2 * w->text_offset.x ) ),
+        .h = ( w->rect.h + pt + pb + ( 2 * w->text_offset.y ) ) };
+
       a_BlitRect( w->images[w->state], NULL, &rect, 1 );
 
       if ( w->state == WI_PRESSED )
@@ -1670,11 +2003,13 @@ static void DrawButtonWidget( aWidget_t* w )
     {
       if ( w->boxed == 1 )
       {
+        int pl, pr, pt, pb;
+        resolve_padding( w, &pl, &pr, &pt, &pb );
         aRectf_t rect = (aRectf_t){
-          .x = ( w->rect.x - w->padding ),
-          .y = ( w->rect.y - w->padding ),
-          .w = ( w->rect.w + ( 2 * w->padding ) ),
-          .h = ( w->rect.h + ( 2 * w->padding ) ) };
+          .x = ( w->rect.x - pl ),
+          .y = ( w->rect.y - pt ),
+          .w = ( w->rect.w + pl + pr ),
+          .h = ( w->rect.h + pt + pb ) };
         a_DrawFilledRect( rect, w->bg );
         a_DrawRect( rect, black );
       }
@@ -1703,11 +2038,13 @@ static void DrawSelectWidget( aWidget_t* w )
   {
     if ( w->boxed == 1 )
     {
-      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - w->padding ),
-                                  .y = ( w->rect.y - w->padding ),
-                                  .w = ( w->rect.w + ( 2 * w->padding ) ),
-                                  .h = ( w->rect.h + ( 2 * w->padding ) ) };
-      
+      int pl, pr, pt, pb;
+      resolve_padding( w, &pl, &pr, &pt, &pb );
+      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - pl ),
+                                  .y = ( w->rect.y - pt ),
+                                  .w = ( w->rect.w + pl + pr ),
+                                  .h = ( w->rect.h + pt + pb ) };
+
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );
     }
@@ -1734,11 +2071,13 @@ static void DrawSliderWidget( aWidget_t* w )
   {
     if ( w->boxed == 1 )
     {
-      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - w->padding ),
-                                  .y = ( w->rect.y - w->padding ),
-                                  .w = ( w->rect.w + ( 2 * w->padding ) ),
-                                  .h = ( w->rect.h + ( 2 * w->padding ) ) };
-      
+      int pl, pr, pt, pb;
+      resolve_padding( w, &pl, &pr, &pt, &pb );
+      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - pl ),
+                                  .y = ( w->rect.y - pt ),
+                                  .w = ( w->rect.w + pl + pr ),
+                                  .h = ( w->rect.h + pt + pb ) };
+
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );
     }
@@ -1782,10 +2121,12 @@ static void DrawInputWidget( aWidget_t* w )
     
     if ( w->boxed == 1 )
     {
-      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - w->padding ),
-        .y = ( w->rect.y - w->padding ),
+      int pl, pr, pt, pb;
+      resolve_padding( w, &pl, &pr, &pt, &pb );
+      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - pl ),
+        .y = ( w->rect.y - pt ),
         .w = ( w->rect.w + ( glyph_rect.w * input->visible_length ) ),
-        .h = ( ( w->rect.h ) + ( 2 * w->padding ) ) };
+        .h = ( w->rect.h + pt + pb ) };
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );
     }
@@ -1850,7 +2191,7 @@ static void DrawOutputWidget( aWidget_t* w )
     text_w  = 0;
     text_h  = 0;
 
-    if ( w->toggle_label && w->label[0] != '\0' )
+    if ( !w->hide_label && w->label[0] != '\0' )
     {
       a_CalcTextDimensions( w->label, app.font_type, &label_w, &label_h );
     }
@@ -1872,11 +2213,13 @@ static void DrawOutputWidget( aWidget_t* w )
 
     if ( w->boxed == 1 )
     {
+      int pl, pr, pt, pb;
+      resolve_padding( w, &pl, &pr, &pt, &pb );
       aRectf_t rect = (aRectf_t){
-        .x = w->rect.x - w->padding,
-        .y = w->rect.y - w->padding,
-        .w = total_w + ( 2 * w->padding ),
-        .h = total_h + ( 2 * w->padding ) };
+        .x = w->rect.x - pl,
+        .y = w->rect.y - pt,
+        .w = total_w + pl + pr,
+        .h = total_h + pt + pb };
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );
     }
@@ -1915,11 +2258,13 @@ static void DrawControlWidget( aWidget_t* w )
   {
     if ( w->boxed == 1 )
     {
-      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - w->padding ),
-                                  .y = ( w->rect.y - w->padding ),
-                                  .w = ( w->rect.w + ( 2 * w->padding ) ),
-                                  .h = ( w->rect.h + ( 2 * w->padding ) ) };
-      
+      int pl, pr, pt, pb;
+      resolve_padding( w, &pl, &pr, &pt, &pb );
+      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - pl ),
+                                  .y = ( w->rect.y - pt ),
+                                  .w = ( w->rect.w + pl + pr ),
+                                  .h = ( w->rect.h + pt + pb ) };
+
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );
     }
@@ -1973,7 +2318,7 @@ static void DrawContainerWidget( aWidget_t* w )
         aOutputWidget_t* out = ( aOutputWidget_t* )comp->data;
         float lw = 0, lh = 0, tw = 0, th = 0;
 
-        if ( comp->toggle_label && comp->label[0] != '\0' )
+        if ( !comp->hide_label && comp->label[0] != '\0' )
         {
           a_CalcTextDimensions( comp->label, app.font_type, &lw, &lh );
         }
@@ -1982,8 +2327,10 @@ static void DrawContainerWidget( aWidget_t* w )
           a_CalcTextDimensions( out->text, app.font_type, &tw, &th );
         }
 
-        float ext_x = comp->rect.x + lw + out->text_offset + tw + comp->padding;
-        float ext_y = comp->rect.y + ( ( lh > th ) ? lh : th ) + comp->padding;
+        int cpl, cpr, cpt, cpb;
+        resolve_padding( comp, &cpl, &cpr, &cpt, &cpb );
+        float ext_x = comp->rect.x + lw + out->text_offset + tw + cpr;
+        float ext_y = comp->rect.y + ( ( lh > th ) ? lh : th ) + cpb;
 
         if ( ext_x > max_x ) max_x = ext_x;
         if ( ext_y > max_y ) max_y = ext_y;
@@ -1993,11 +2340,17 @@ static void DrawContainerWidget( aWidget_t* w )
     float cont_w = max_x - w->rect.x;
     float cont_h = max_y - w->rect.y;
 
+    /* respect user-specified dimensions as a minimum */
+    if ( w->rect.w > cont_w ) cont_w = w->rect.w;
+    if ( w->rect.h > cont_h ) cont_h = w->rect.h;
+
+    int pl, pr, pt, pb;
+    resolve_padding( w, &pl, &pr, &pt, &pb );
     aRectf_t rect = (aRectf_t){
-      .x = ( w->rect.x - w->padding - 5 ),
-      .y = ( w->rect.y - w->padding - 3 ),
-      .w = ( cont_w + ( 2 * w->padding + 15 ) + ( 2 * w->text_offset.x ) ),
-      .h = ( cont_h + ( 2 * w->padding + 10 ) + ( 2 * w->text_offset.y ) ) };
+      .x = ( w->rect.x - pl - 5 ),
+      .y = ( w->rect.y - pt - 3 ),
+      .w = ( cont_w + pl + pr + 15 + ( 2 * w->text_offset.x ) ),
+      .h = ( cont_h + pt + pb + 10 + ( 2 * w->text_offset.y ) ) };
     
     if ( w->texture )
     {
@@ -2117,7 +2470,7 @@ int a_WidgetCacheFree( void )
 
         case WT_CONTAINER:
           temp_container = (aContainerWidget_t*)current->data;
-          ContainerWidgetFree( temp_container );
+          ContainerWidgetFree( temp_container, current );
           break;
         
         default:
@@ -2134,6 +2487,20 @@ int a_WidgetCacheFree( void )
       {
         free( current->calc_y );
         current->calc_y = NULL;
+      }
+
+      if ( current->click_sound != NULL )
+      {
+        a_AudioFreeSound( current->click_sound );
+        free( current->click_sound );
+        current->click_sound = NULL;
+      }
+
+      if ( current->hover_sound != NULL )
+      {
+        a_AudioFreeSound( current->hover_sound );
+        free( current->hover_sound );
+        current->hover_sound = NULL;
       }
 
       if ( current->data != NULL )
@@ -2156,13 +2523,13 @@ int a_WidgetCacheFree( void )
   return 0;
 }
 
-static void ContainerWidgetFree( aContainerWidget_t* con )
+static void ContainerWidgetFree( aContainerWidget_t* con, aWidget_t* parent )
 {
   aSelectWidget_t* temp_select = NULL;
   aSliderWidget_t* temp_slider = NULL;
   aInputWidget_t* temp_input = NULL;
   aControlWidget_t* temp_control = NULL;
-  
+
   for ( int i = 0; i < con->num_components; i++ )
   {
     aWidget_t* current = &con->components[i];
@@ -2225,6 +2592,23 @@ static void ContainerWidgetFree( aContainerWidget_t* con )
       free( current->calc_y );
       current->calc_y = NULL;
     }
+
+    /* free child sounds only if they were loaded by the child (not inherited) */
+    if ( current->click_sound != NULL &&
+         ( parent == NULL || current->click_sound != parent->click_sound ) )
+    {
+      a_AudioFreeSound( current->click_sound );
+      free( current->click_sound );
+      current->click_sound = NULL;
+    }
+
+    if ( current->hover_sound != NULL &&
+         ( parent == NULL || current->hover_sound != parent->hover_sound ) )
+    {
+      a_AudioFreeSound( current->hover_sound );
+      free( current->hover_sound );
+      current->hover_sound = NULL;
+    }
   }
 
   free( con->components );
@@ -2238,7 +2622,7 @@ static aWidget_t* GetCurrentWidget( void )
   {
     if ( current->hidden == 0 )
     {
-      if ( WithinRange( app.mouse.x, app.mouse.y, current->rect ) )
+      if ( WithinRangePadded( app.mouse.x, app.mouse.y, current ) )
       {
         if ( current->type == WT_CONTAINER )
         {
@@ -2251,7 +2635,7 @@ static aWidget_t* GetCurrentWidget( void )
 
             if ( component->hidden == 0 && component->type != WT_OUTPUT )
             {
-              if ( WithinRange( app.mouse.x, app.mouse.y, component->rect ) )
+              if ( WithinRangePadded( app.mouse.x, app.mouse.y, component ) )
               {
                 if ( mouse_moved )
                 {
@@ -2279,10 +2663,14 @@ static aWidget_t* GetCurrentWidget( void )
 }
 
 
-static int WithinRange( int x, int y, aRectf_t rect )
+static int WithinRangePadded( int x, int y, aWidget_t* w )
 {
-  if ( x >= rect.x && y >= rect.y &&
-       x <= ( rect.x + rect.w ) && y <= ( rect.y + rect.h ) )
+  int pl, pr, pt, pb;
+  resolve_padding( w, &pl, &pr, &pt, &pb );
+
+  if ( x >= ( w->rect.x - pl ) && y >= ( w->rect.y - pt ) &&
+       x <= ( w->rect.x + w->rect.w + pr ) &&
+       y <= ( w->rect.y + w->rect.h + pb ) )
   {
     return 1;
   }
