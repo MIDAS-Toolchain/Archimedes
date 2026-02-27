@@ -2125,7 +2125,7 @@ static void DrawInputWidget( aWidget_t* w )
       resolve_padding( w, &pl, &pr, &pt, &pb );
       aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - pl ),
         .y = ( w->rect.y - pt ),
-        .w = ( w->rect.w + ( glyph_rect.w * input->visible_length ) ),
+        .w = ( w->rect.w + ( glyph_rect.w * input->visible_length ) + pl + pr ),
         .h = ( w->rect.h + pt + pb ) };
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );

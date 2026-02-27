@@ -76,8 +76,8 @@ void a_ViewportDrawRect( aRectf_t rect, aColor_t color )
   float world_x1 = rect.x - rect.w;
   float world_y1 = rect.y - rect.h;
 
-  float world_width  = rect.w * 2.0f;
-  float world_height = rect.h * 2.0f;
+  float world_width  = rect.w ;
+  float world_height = rect.h ;
 
   SDL_Rect r = {
     (int)( ( world_x1 - viewport_x1 ) * current_scale.x ),
@@ -165,7 +165,7 @@ void a_ViewportInput( aRectf_t* viewport, float width, float height )
 
   }
   
-  if ( app.mouse.button == 1 )
+  if ( app.mouse.button == 2 )
   {
     if ( !panning )
     {
@@ -221,7 +221,6 @@ void a_ViewportInput( aRectf_t* viewport, float width, float height )
       prev_mouse_y = app.mouse.y;
 
     }
-
   }
 
   if ( viewport->x < viewport->w ) viewport->x = viewport->w;
