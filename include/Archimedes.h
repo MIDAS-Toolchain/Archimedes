@@ -2191,6 +2191,7 @@ aImage_t* a_ImageFromSpriteSheet( aSpriteSheet_t* sheet, int x, int y );
 */
 
 aWorld_t* a_2DWorldCreate( int width, int height, int tile_w, int tile_h );
+void a_2DWorldDraw( int x_off, int y_off, aWorld_t* world, aTileset_t* tile_set );
 
 /*
 ---------------------------------------------------------------
@@ -2198,6 +2199,8 @@ aWorld_t* a_2DWorldCreate( int width, int height, int tile_w, int tile_h );
 ---------------------------------------------------------------
 */
 
+aTileset_t* a_TilesetCreate( const char* filename,
+                             const int tile_w, const int tile_h );
 
 #endif
 

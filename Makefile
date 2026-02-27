@@ -61,6 +61,7 @@ ARCHIMEDES_SRCS = \
 	  aLayout.c\
 	  aSpriteSheet.c\
     aText.c \
+    aTile.c \
     aTileBitmask.c \
     aTimer.c \
 	  aUtils.c \
