@@ -1782,9 +1782,10 @@ static void DrawInputWidget( aWidget_t* w )
     
     if ( w->boxed == 1 )
     {
-      aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - w->padding ),
+      aRectf_t rect = (aRectf_t){ 
+        .x = ( w->rect.x - w->padding ),
         .y = ( w->rect.y - w->padding ),
-        .w = ( w->rect.w + ( glyph_rect.w * input->visible_length ) ),
+        .w = ( w->rect.w + ( glyph_rect.w * input->visible_length ) + (2 * w->padding) ),
         .h = ( ( w->rect.h ) + ( 2 * w->padding ) ) };
       a_DrawFilledRect( rect, w->bg );
       a_DrawRect( rect, black );
