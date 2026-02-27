@@ -38,6 +38,16 @@ static void calc_skip_ws( const char* str, int* pos )
   while ( str[*pos] && isspace( (unsigned char)str[*pos] ) ) (*pos)++;
 }
 
+static int calc_match( const char* str, const char* keyword, int len )
+{
+  for ( int i = 0; i < len; i++ )
+  {
+    if ( tolower( (unsigned char)str[i] ) != tolower( (unsigned char)keyword[i] ) )
+      return 0;
+  }
+  return 1;
+}
+
 
 static double calc_factor( const char* str, int* pos )
 {
@@ -55,17 +65,17 @@ static double calc_factor( const char* str, int* pos )
   if ( isalpha( (unsigned char)str[*pos] ) )
   {
     /* SCREEN.w / SCREEN.h */
-    if ( strncmp( str + *pos, "SCREEN.w", 8 ) == 0 && !isalnum( (unsigned char)str[*pos + 8] ) )
+    if ( calc_match( str + *pos, "SCREEN.w", 8 ) && !isalnum( (unsigned char)str[*pos + 8] ) )
     {
       *pos += 8;
       return (double)SCREEN_WIDTH;
     }
-    if ( strncmp( str + *pos, "SCREEN.h", 8 ) == 0 && !isalnum( (unsigned char)str[*pos + 8] ) )
+    if ( calc_match( str + *pos, "SCREEN.h", 8 ) && !isalnum( (unsigned char)str[*pos + 8] ) )
     {
       *pos += 8;
       return (double)SCREEN_HEIGHT;
     }
-    if ( strncmp( str + *pos, "SCREEN.", 7 ) == 0 )
+    if ( calc_match( str + *pos, "SCREEN.", 7 ) )
     {
       printf( "%s:%d\n  AUF calc error: unknown SCREEN property '%c'\n"
               "  valid: SCREEN.w, SCREEN.h\n", g_auf_filename, g_auf_line, str[*pos + 7] );
@@ -73,28 +83,28 @@ static double calc_factor( const char* str, int* pos )
     }
 
     /* THIS.w / THIS.h / THIS.x / THIS.y */
-    if ( strncmp( str + *pos, "THIS.w", 6 ) == 0 && !isalnum( (unsigned char)str[*pos + 6] ) )
+    if ( calc_match( str + *pos, "THIS.w", 6 ) && !isalnum( (unsigned char)str[*pos + 6] ) )
     {
       *pos += 6;
       if ( calc_this_available ) return calc_this_rect.w;
       calc_has_this = 1;
       return 0;
     }
-    if ( strncmp( str + *pos, "THIS.h", 6 ) == 0 && !isalnum( (unsigned char)str[*pos + 6] ) )
+    if ( calc_match( str + *pos, "THIS.h", 6 ) && !isalnum( (unsigned char)str[*pos + 6] ) )
     {
       *pos += 6;
       if ( calc_this_available ) return calc_this_rect.h;
       calc_has_this = 1;
       return 0;
     }
-    if ( strncmp( str + *pos, "THIS.x", 6 ) == 0 && !isalnum( (unsigned char)str[*pos + 6] ) )
+    if ( calc_match( str + *pos, "THIS.x", 6 ) && !isalnum( (unsigned char)str[*pos + 6] ) )
     {
       *pos += 6;
       if ( calc_this_available ) return calc_this_rect.x;
       calc_has_this = 1;
       return 0;
     }
-    if ( strncmp( str + *pos, "THIS.y", 6 ) == 0 && !isalnum( (unsigned char)str[*pos + 6] ) )
+    if ( calc_match( str + *pos, "THIS.y", 6 ) && !isalnum( (unsigned char)str[*pos + 6] ) )
     {
       *pos += 6;
       if ( calc_this_available ) return calc_this_rect.y;
@@ -161,7 +171,8 @@ static double calc_factor( const char* str, int* pos )
       buf[len] = '\0';
 
       printf( "%s:%d\n  AUF calc error: unknown constant '%s'\n"
-              "  known: SCREEN.w, SCREEN.h, THIS.w/h/x/y, or widget_name.w/h/x/y\n", g_auf_filename, g_auf_line, buf );
+              "  known: SCREEN.w, SCREEN.h, THIS.w/h/x/y, or widget_name.w/h/x/y\n"
+              "  did you forget a property? e.g. %s.w, %s.x\n", g_auf_filename, g_auf_line, buf, buf, buf );
       exit( 1 );
     }
   }

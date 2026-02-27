@@ -365,6 +365,7 @@ void a_WidgetsInit( const char* filename )
   handle_control_widget = 0;
   pending_press_widget = NULL;
   focused_container = NULL;
+  app.active_widget = NULL;
   mouse_moved = 0;
   last_mouse_x = -1;
   last_mouse_y = -1;
@@ -636,7 +637,7 @@ static void CreateWidget( aAUFNode_t* root )
       STRCPY( w->name, root->value_string );
 
       /* reserved keywords */
-      if ( strcmp( w->name, "SCREEN" ) == 0 || strcmp( w->name, "THIS" ) == 0 )
+      if ( strcasecmp( w->name, "SCREEN" ) == 0 || strcasecmp( w->name, "THIS" ) == 0 )
       {
         printf( "%s:%d\n  AUF error: '%s' is a reserved keyword and cannot be used as a widget name.\n",
                 g_auf_filename, root->line_number, w->name );
@@ -1233,7 +1234,7 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
         STRCPY( current->name, node->value_string );
 
         /* reserved keywords */
-        if ( strcmp( current->name, "SCREEN" ) == 0 || strcmp( current->name, "THIS" ) == 0 )
+        if ( strcasecmp( current->name, "SCREEN" ) == 0 || strcasecmp( current->name, "THIS" ) == 0 )
         {
           printf( "%s:%d\n  AUF error: '%s' is a reserved keyword and cannot be used as a widget name.\n",
                   g_auf_filename, node->line_number, current->name );
