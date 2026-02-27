@@ -21,6 +21,7 @@ static void CreateButtonWidget( aWidget_t* w );
 static void CreateSelectWidget( aWidget_t* w, aAUFNode_t* root );
 static void CreateSliderWidget( aWidget_t* w, aAUFNode_t* root );
 static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root );
+static void CreateOutputWidget( aWidget_t* w, aAUFNode_t* root );
 static void CreateControlWidget( aWidget_t* w );
 static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root );
 
@@ -28,6 +29,7 @@ static void DrawButtonWidget( aWidget_t* w );
 static void DrawSelectWidget( aWidget_t* w );
 static void DrawSliderWidget( aWidget_t* w );
 static void DrawInputWidget( aWidget_t* w );
+static void DrawOutputWidget( aWidget_t* w );
 static void DrawControlWidget( aWidget_t* w );
 static void DrawContainerWidget( aWidget_t* w );
 
@@ -178,7 +180,8 @@ void a_DoWidget( void )
         {
           idx--;
           if ( idx < 0 ) idx = con->num_components - 1;
-          if ( con->components[idx].hidden == 0 )
+          if ( con->components[idx].hidden == 0 &&
+               con->components[idx].type != WT_OUTPUT )
           {
             con->focus_index = idx;
             break;
@@ -195,7 +198,8 @@ void a_DoWidget( void )
         {
           idx++;
           if ( idx >= con->num_components ) idx = 0;
-          if ( con->components[idx].hidden == 0 )
+          if ( con->components[idx].hidden == 0 &&
+               con->components[idx].type != WT_OUTPUT )
           {
             con->focus_index = idx;
             break;
@@ -229,7 +233,13 @@ void a_DoWidget( void )
 
       if ( app.keyboard[SDL_SCANCODE_SPACE] || app.keyboard[SDL_SCANCODE_RETURN] )
       {
-        if ( focused->type == WT_INPUT )
+        if ( focused->type == WT_OUTPUT )
+        {
+          /* Output widgets are read-only; ignore activation */
+          app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
+        }
+
+        else if ( focused->type == WT_INPUT )
         {
           app.keyboard[A_SPACEBAR] = app.keyboard[A_RETURN] = 0;
           app.active_widget = focused;
@@ -315,7 +325,11 @@ void a_DrawWidgets( void )
       case WT_INPUT:
         DrawInputWidget( w );
         break;
-      
+
+      case WT_OUTPUT:
+        DrawOutputWidget( w );
+        break;
+
       case WT_CONTROL:
         DrawControlWidget( w );
         break;
@@ -775,7 +789,11 @@ static void CreateWidget( aAUFNode_t* root )
       case WT_INPUT:
         CreateInputWidget( w, root );
         break;
-      
+
+      case WT_OUTPUT:
+        CreateOutputWidget( w, root );
+        break;
+
       case WT_CONTROL:
         CreateControlWidget( w );
         break;
@@ -952,6 +970,36 @@ static void CreateInputWidget( aWidget_t* w, aAUFNode_t* root )
                         &input->rect.w, &input->rect.h );
 }
 
+static void CreateOutputWidget( aWidget_t* w, aAUFNode_t* root )
+{
+  aOutputWidget_t* output;
+
+  output = malloc( sizeof( aOutputWidget_t ) );
+  memset( output, 0, sizeof( aOutputWidget_t ) );
+
+  w->data = output;
+
+  aAUFNode_t* node_max_length = a_AUFGetObjectItem( root, "max_length" );
+  aAUFNode_t* node_visible    = a_AUFGetObjectItem( root, "visible_length" );
+  aAUFNode_t* node_offset     = a_AUFGetObjectItem( root, "text_offset" );
+
+  output->max_length     = ( node_max_length != NULL ) ? node_max_length->value_int : MAX_LINE_LENGTH;
+  output->visible_length = ( node_visible != NULL ) ? node_visible->value_int : 16;
+  output->text_offset    = ( node_offset != NULL ) ? node_offset->value_int : 0;
+  output->text           = malloc( output->max_length + 1 );
+  memset( output->text, 0, output->max_length + 1 );
+
+  if ( w->toggle_label )
+  {
+    a_CalcTextDimensions( w->label, app.font_type, &w->rect.w, &w->rect.h );
+  }
+
+  output->rect.x = w->rect.x + w->rect.w + output->text_offset;
+  output->rect.y = w->rect.y;
+  a_CalcTextDimensions( "A", app.font_type,
+                        &output->rect.w, &output->rect.h );
+}
+
 /**
  * @brief Creates type-specific data for a Control (key binding) widget.
  *
@@ -1017,8 +1065,9 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
   }
 
   memset( container, 0, sizeof( aContainerWidget_t ) );
-  
+
   w->data = container;
+  container->rect = w->rect;
 
   if ( node_flex != NULL )
   {
@@ -1328,6 +1377,18 @@ static void CreateContainerWidget( aWidget_t* w, aAUFNode_t* root )
                                             ( input->rect.y + input->rect.h ) );
           break;
 
+        case WT_OUTPUT:
+        {
+          CreateOutputWidget( current, node );
+          aOutputWidget_t* out = (aOutputWidget_t*)current->data;
+
+          current_widget_max_x_extent = MAX( current_widget_max_x_extent,
+                                            ( out->rect.x + out->rect.w ) );
+          current_widget_max_y_extent = MAX( current_widget_max_y_extent,
+                                            ( out->rect.y + out->rect.h ) );
+          break;
+        }
+
         case WT_CONTROL:
           CreateControlWidget( current );
           break;
@@ -1571,6 +1632,74 @@ static void DrawInputWidget( aWidget_t* w )
   a_DisableClipRect();
 }
 
+static void DrawOutputWidget( aWidget_t* w )
+{
+  aColor_t c;
+  aOutputWidget_t* output;
+  float label_w, label_h, text_w, text_h;
+
+  output = ( aOutputWidget_t* )w->data;
+
+  WidgetColor( w, &c );
+
+  if ( w->hidden != 1 )
+  {
+    label_w = 0;
+    label_h = 0;
+    text_w  = 0;
+    text_h  = 0;
+
+    if ( w->toggle_label && w->label[0] != '\0' )
+    {
+      a_CalcTextDimensions( w->label, app.font_type, &label_w, &label_h );
+    }
+
+    if ( output->text[0] != '\0' )
+    {
+      a_CalcTextDimensions( output->text, app.font_type, &text_w, &text_h );
+    }
+
+    float text_x = w->rect.x + label_w + output->text_offset;
+    float total_w = label_w + output->text_offset + text_w;
+    float total_h = ( label_h > text_h ) ? label_h : text_h;
+
+    if ( total_h == 0 )
+    {
+      float dummy;
+      a_CalcTextDimensions( "A", app.font_type, &dummy, &total_h );
+    }
+
+    if ( w->boxed == 1 )
+    {
+      aRectf_t rect = (aRectf_t){
+        .x = w->rect.x - w->padding,
+        .y = w->rect.y - w->padding,
+        .w = total_w + ( 2 * w->padding ),
+        .h = total_h + ( 2 * w->padding ) };
+      a_DrawFilledRect( rect, w->bg );
+      a_DrawRect( rect, black );
+    }
+
+    aTextStyle_t style = { .type       = app.font_type,
+                           .fg         = c,
+                           .bg         = {0,0,0,0},
+                           .align      = TEXT_ALIGN_LEFT,
+                           .wrap_width = 0,
+                           .scale      = 1.0f,
+                           .padding    = 0 };
+
+    if ( label_w > 0 )
+    {
+      a_DrawText( w->label, w->rect.x, w->rect.y, style );
+    }
+
+    if ( text_w > 0 )
+    {
+      a_DrawText( output->text, text_x, w->rect.y, style );
+    }
+  }
+}
+
 static void DrawControlWidget( aWidget_t* w )
 {
   aColor_t c;
@@ -1626,14 +1755,48 @@ static void DrawContainerWidget( aWidget_t* w )
   aContainerWidget_t* container;
 
   container = ( aContainerWidget_t* )w->data;
-  
+
   if ( w->hidden != 1 )
   {
-    aRectf_t rect = (aRectf_t){ 
+    /* Recalculate container extent from children to handle dynamic content */
+    float max_x = w->rect.x + w->rect.w;
+    float max_y = w->rect.y + w->rect.h;
+
+    for ( int i = 0; i < container->num_components; i++ )
+    {
+      aWidget_t* comp = &container->components[i];
+      if ( comp->hidden == 1 ) continue;
+
+      if ( comp->type == WT_OUTPUT )
+      {
+        aOutputWidget_t* out = ( aOutputWidget_t* )comp->data;
+        float lw = 0, lh = 0, tw = 0, th = 0;
+
+        if ( comp->toggle_label && comp->label[0] != '\0' )
+        {
+          a_CalcTextDimensions( comp->label, app.font_type, &lw, &lh );
+        }
+        if ( out->text[0] != '\0' )
+        {
+          a_CalcTextDimensions( out->text, app.font_type, &tw, &th );
+        }
+
+        float ext_x = comp->rect.x + lw + out->text_offset + tw + comp->padding;
+        float ext_y = comp->rect.y + ( ( lh > th ) ? lh : th ) + comp->padding;
+
+        if ( ext_x > max_x ) max_x = ext_x;
+        if ( ext_y > max_y ) max_y = ext_y;
+      }
+    }
+
+    float cont_w = max_x - w->rect.x;
+    float cont_h = max_y - w->rect.y;
+
+    aRectf_t rect = (aRectf_t){
       .x = ( w->rect.x - w->padding - 5 ),
       .y = ( w->rect.y - w->padding - 3 ),
-      .w = ( w->rect.w + ( 2 * w->padding + 15 ) + ( 2 * w->text_offset.x ) ),
-      .h = ( w->rect.h + ( 2 * w->padding + 10 ) + ( 2 * w->text_offset.y ) ) };
+      .w = ( cont_w + ( 2 * w->padding + 15 ) + ( 2 * w->text_offset.x ) ),
+      .h = ( cont_h + ( 2 * w->padding + 10 ) + ( 2 * w->text_offset.y ) ) };
     
     if ( w->texture )
     {
@@ -1669,6 +1832,10 @@ static void DrawContainerWidget( aWidget_t* w )
 
           case WT_INPUT:
             DrawInputWidget( &current );
+            break;
+
+          case WT_OUTPUT:
+            DrawOutputWidget( &current );
             break;
 
           case WT_SELECT:
@@ -1739,7 +1906,14 @@ int a_WidgetCacheFree( void )
           temp_input = (aInputWidget_t*)current->data;
           free( temp_input->text );
           break;
-        
+
+        case WT_OUTPUT:
+        {
+          aOutputWidget_t* temp_output = (aOutputWidget_t*)current->data;
+          free( temp_output->text );
+          break;
+        }
+
         case WT_CONTAINER:
           temp_container = (aContainerWidget_t*)current->data;
           ContainerWidgetFree( temp_container );
@@ -1802,15 +1976,22 @@ static void ContainerWidgetFree( aContainerWidget_t* con )
         temp_input = (aInputWidget_t*)current->data;
         free( temp_input->text );
         break;
-      
+
+      case WT_OUTPUT:
+      {
+        aOutputWidget_t* temp_output = (aOutputWidget_t*)current->data;
+        free( temp_output->text );
+        break;
+      }
+
       case WT_BUTTON:
         break;
-      
+
       case WT_SLIDER:
         temp_slider = (aSliderWidget_t*)current->data;
         free( temp_slider );
         break;
-      
+
       case WT_CONTROL:
         temp_control = (aControlWidget_t*)current->data;
         free( temp_control );
@@ -1844,7 +2025,7 @@ static aWidget_t* GetCurrentWidget( void )
           {
             aWidget_t* component = &container->components[i];
 
-            if ( component->hidden == 0 )
+            if ( component->hidden == 0 && component->type != WT_OUTPUT )
             {
               if ( WithinRange( app.mouse.x, app.mouse.y, component->rect ) )
               {
@@ -1860,7 +2041,7 @@ static aWidget_t* GetCurrentWidget( void )
 
         }
 
-        else
+        else if ( current->type != WT_OUTPUT )
         {
           return current;
         }
@@ -1946,3 +2127,25 @@ static void WidgetColor( aWidget_t* w, aColor_t* c )
   }
 }
 
+void a_OutputWidgetSetText( aWidget_t* w, const char* text )
+{
+  if ( w == NULL || w->data == NULL || text == NULL )
+  {
+    return;
+  }
+
+  aOutputWidget_t* output = ( aOutputWidget_t* )w->data;
+  memset( output->text, 0, output->max_length + 1 );
+  strncpy( output->text, text, output->max_length );
+}
+
+const char* a_OutputWidgetGetText( aWidget_t* w )
+{
+  if ( w == NULL || w->data == NULL )
+  {
+    return NULL;
+  }
+
+  aOutputWidget_t* output = ( aOutputWidget_t* )w->data;
+  return output->text;
+}

@@ -285,6 +285,15 @@ typedef struct
 
 typedef struct
 {
+  aRectf_t rect;
+  int max_length;
+  int visible_length;
+  int text_offset;
+  char* text;
+} aOutputWidget_t;
+
+typedef struct
+{
   int x, y;
   int value;
 } aControlWidget_t;
@@ -1335,6 +1344,7 @@ enum
   WT_INPUT,
   WT_CONTROL,
   WT_CONTAINER,
+  WT_OUTPUT,
 };
 
 enum
@@ -1406,6 +1416,9 @@ aContainerWidget_t* a_GetContainerFromWidget( const char* name );
 void a_WidgetsInit( const char* filename );
 int a_WidgetCacheFree( void );
 aWidget_t a_WidgetGetHeadWidget( void );
+
+void a_OutputWidgetSetText( aWidget_t* w, const char* text );
+const char* a_OutputWidgetGetText( aWidget_t* w );
 
 /*
 ---------------------------------------------------------------

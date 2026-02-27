@@ -373,6 +373,11 @@ static int GetType( char* type )
     return WT_CONTAINER;
   }
 
+  if ( strcmp( type, "WT_OUTPUT" ) == 0 )
+  {
+    return WT_OUTPUT;
+  }
+
   printf( "unknown widget type: '%s' | %s, %d\n", type, __FILE__, __LINE__ );
 
   return WT_UNKNOWN;
