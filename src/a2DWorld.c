@@ -37,32 +37,73 @@ aWorld_t* a_2DWorldCreate( int width, int height, int tile_w, int tile_h )
   {
     new_world->map[i].solid = 1;
     new_world->map[i].tile  = 0;
+    new_world->map[i].glyph = "@";
   }
 
   return new_world;
 }
 
-void a_2DWorldDraw( int x_off, int y_off, aWorld_t* world, aTileset_t* tile_set )
+void a_2DWorldDraw( int x_off, int y_off,
+                    aWorld_t* world, aTileset_t* tile_set,
+                    uint8_t draw_ascii )
 {
   for ( int i = 0; i < world->tile_count; i++ )
   {
+    aRectf_t glyph_size = a_GetGlyphSize();
+
     int row = i % world->cols;
     int col = i / world->cols;
-    int x = (row * world->tile_w)+x_off;
-    int y = (col * world->tile_h)+y_off;
+    int x, y;
+
+    if ( draw_ascii )
+    {
+      x = (row * glyph_size.w)+x_off;
+      y = (col * glyph_size.h)+y_off;
+    }
+  
+    else
+    {
+      x = (row * world->tile_w)+x_off;
+      y = (col * world->tile_h)+y_off;
+    }
     
     aTile_t img_index = world->map[i];
     aImage_t* tile_img = tile_set[img_index.tile].img;
     
+    aTextStyle_t text_style = {
+      .type = FONT_CODE_PAGE_437,
+      .fg = white,
+      .bg = black,
+      .align = TEXT_ALIGN_CENTER,
+      .wrap_width = 0,
+      .scale = 1.0f,
+      .padding = 0
+    };
+
     if ( app.g_viewport.x != 0 && app.g_viewport.y != 0
          && app.g_viewport.w != 0 && app.g_viewport.h != 0 )
     {
-      a_ViewportBlit( tile_img, x, y );
+      if ( draw_ascii )
+      {
+        a_DrawText( img_index.glyph, x, y, text_style );
+      }
+      else
+      {
+        a_ViewportBlit( tile_img, x, y );
+      }
     }
     
     else
     {
-      a_Blit( tile_img, x, y );
+      if ( draw_ascii )
+      {
+        a_DrawText( img_index.glyph, x, y, text_style );
+      }
+ 
+      else
+      {
+        a_Blit( tile_img, x, y );
+      }
     }
   }
 }

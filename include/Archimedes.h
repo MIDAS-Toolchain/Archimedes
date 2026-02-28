@@ -433,6 +433,9 @@ typedef struct _textures{
 typedef struct _tile
 {
   uint32_t tile;
+  char* glyph;
+  aColor_t glyph_fg;
+  aColor_t glyph_bg;
   uint8_t solid;
   Ground_t base;
 } aTile_t;
@@ -2191,7 +2194,9 @@ aImage_t* a_ImageFromSpriteSheet( aSpriteSheet_t* sheet, int x, int y );
 */
 
 aWorld_t* a_2DWorldCreate( int width, int height, int tile_w, int tile_h );
-void a_2DWorldDraw( int x_off, int y_off, aWorld_t* world, aTileset_t* tile_set );
+void a_2DWorldDraw( int x_off, int y_off,
+                    aWorld_t* world, aTileset_t* tile_set,
+                    uint8_t draw_ascii );
 
 /*
 ---------------------------------------------------------------
