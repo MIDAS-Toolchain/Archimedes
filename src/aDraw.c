@@ -291,7 +291,68 @@ void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale
   }
 
   SDL_RenderCopyF( app.renderer, img->texture, &temp_src, &temp_dest );
-  
+
+  if ( img->color_modulate )
+  {
+    SDL_SetTextureColorMod( img->texture,
+                            255, 255, 255);
+    SDL_SetTextureAlphaMod( img->texture, 255 );
+  }
+}
+
+void a_BlitRectFlipped( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale, char axis )
+{
+  SDL_FRect temp_dest = {0};
+  SDL_Rect temp_src = {0};
+
+  if ( !img ) return;
+
+  SDL_RendererFlip flip = SDL_FLIP_NONE;
+  if ( axis == 'x' ) flip = SDL_FLIP_HORIZONTAL;
+  else if ( axis == 'y' ) flip = SDL_FLIP_VERTICAL;
+  else SDL_Log( "a_BlitRectFlipped: invalid axis '%c', expected 'x' or 'y'", axis );
+
+  if ( dest != NULL )
+  {
+    temp_dest = (SDL_FRect){ .x = dest->x,
+      .y = dest->y,
+      .w = dest->w * scale,
+      .h = dest->h * scale
+    };
+  }
+
+  else
+  {
+    int temp_w, temp_h;
+    SDL_QueryTexture( img->texture, NULL, NULL, &temp_w, &temp_h );
+    temp_dest.w = temp_w;
+    temp_dest.h = temp_h;
+  }
+
+  if ( src != NULL )
+  {
+    temp_src = (SDL_Rect){ .x = src->x,
+      .y = src->y,
+      .w = src->w,
+      .h = src->h
+    };
+  }
+
+  else
+  {
+    SDL_QueryTexture( img->texture, NULL, NULL, &temp_src.w, &temp_src.h );
+  }
+
+  if ( img->color_modulate )
+  {
+    SDL_SetTextureColorMod( img->texture,
+                            img->color.r, img->color.g, img->color.b);
+    SDL_SetTextureAlphaMod( img->texture, img->color.a );
+  }
+
+  SDL_RenderCopyExF( app.renderer, img->texture, &temp_src, &temp_dest,
+                     0.0, NULL, flip );
+
   if ( img->color_modulate )
   {
     SDL_SetTextureColorMod( img->texture,

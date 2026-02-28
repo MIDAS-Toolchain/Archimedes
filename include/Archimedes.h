@@ -1082,6 +1082,14 @@ void a_Blit( aImage_t* img, float x, float y );
 void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale );
 
 /**
+ * @brief Render texture with scaling and axis flip
+ *
+ * Same as a_BlitRect but mirrors the texture along the given axis.
+ * Pass 'x' for horizontal flip, 'y' for vertical flip.
+ */
+void a_BlitRectFlipped( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale, char axis );
+
+/**
  * @brief Blit a rectangular region of a surface to another surface
  *
  * @param surf Source SDL surface to draw from
