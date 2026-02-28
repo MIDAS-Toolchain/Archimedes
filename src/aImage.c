@@ -137,11 +137,8 @@ aImage_t* a_ImageCreate( int width, int height )
     LOG( "Failed to allocate memory for img" );
   }
 
-  img->surface = SDL_CreateRGBSurface( 0, width, height, 32,
-                                       0x00FF0000,
-                                       0x0000FF00,
-                                       0x000000FF,
-                                       0xFF000000);
+  img->surface = SDL_CreateRGBSurfaceWithFormat( 0, width, height, 32,
+                                                  SDL_PIXELFORMAT_RGBA32 );
   if ( img->surface == NULL )
   {
     free( img );

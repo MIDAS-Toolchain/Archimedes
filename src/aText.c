@@ -538,6 +538,22 @@ static void DrawTextLine( const char* text, const int x, const int y,
   }
 }
 
+void a_DrawGlyph( const char* glyph, int x, int y, int w, int h,
+                  aColor_t fg, aColor_t bg, int font_type )
+{
+  if ( !glyph || !glyph[0] ) return;
+
+  if ( bg.a > 0 )
+    a_DrawFilledRect( (aRectf_t){ x, y, w, h }, bg );
+
+  int c = glyph[0] - 1;
+  SDL_Rect* src = &app.glyphs[font_type][c];
+  SDL_Rect dest = { x, y, w, h };
+
+  SDL_SetTextureColorMod( app.font_textures[font_type], fg.r, fg.g, fg.b );
+  SDL_RenderCopy( app.renderer, app.font_textures[font_type], src, &dest );
+}
+
 static unsigned int decode_utf8_codepoint( const char* string, const int start_pos, const int length )
 {
   unsigned int codepoint = 0;

@@ -1307,6 +1307,24 @@ void a_CalcTextDimensions( const char* text, int font_type, float* w, float* h )
 void a_DrawText( const char* content, int x, int y, aTextStyle_t style );
 
 /**
+ * @brief Draw a single glyph stretched to fill an arbitrary rectangle
+ *
+ * Unlike a_DrawText, this ignores the glyph's natural aspect ratio and
+ * stretches it to exactly fill the given width and height.
+ *
+ * @param glyph Single-character string to render
+ * @param x Destination X coordinate
+ * @param y Destination Y coordinate
+ * @param w Destination width
+ * @param h Destination height
+ * @param fg Foreground color
+ * @param bg Background color (drawn if bg.a > 0)
+ * @param font_type Font type (e.g. FONT_CODE_PAGE_437)
+ */
+void a_DrawGlyph( const char* glyph, int x, int y, int w, int h,
+                  aColor_t fg, aColor_t bg, int font_type );
+
+/**
  * @brief Create an SDL texture from text
  *
  * Renders text to a new SDL texture using the specified font.

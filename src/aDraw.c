@@ -411,6 +411,7 @@ void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,
 
   if ( dest->texture ) SDL_DestroyTexture( dest->texture );
   dest->texture = SDL_CreateTextureFromSurface( app.renderer, dest->surface );
+  dest->rect = (aRectf_t){ 0, 0, dest->surface->w, dest->surface->h };
 }
 
 void a_UpdateTitle( const char *title )
