@@ -18,8 +18,8 @@ aWorld_t* a_2DWorldCreate( int width, int height, int tile_w, int tile_h )
   aWorld_t* new_world = malloc( sizeof( aWorld_t ) );
   if ( new_world == NULL ) return NULL;
   
-  new_world->rows = width  / tile_w;
-  new_world->cols = height / tile_h;
+  new_world->rows = width;
+  new_world->cols = height;
   new_world->tile_w = tile_w;
   new_world->tile_h = tile_h;
   new_world->tile_count = new_world->rows * new_world->cols;
@@ -46,10 +46,11 @@ void a_2DWorldDraw( int x_off, int y_off, aWorld_t* world, aTileset_t* tile_set 
 {
   for ( int i = 0; i < world->tile_count; i++ )
   {
-    int row = i / world->cols;
-    int col = i % world->cols;
+    int row = i % world->cols;
+    int col = i / world->cols;
     int x = (row * world->tile_w)+x_off;
     int y = (col * world->tile_h)+y_off;
+    
     aTile_t img_index = world->map[i];
     aImage_t* tile_img = tile_set[img_index.tile].img;
     

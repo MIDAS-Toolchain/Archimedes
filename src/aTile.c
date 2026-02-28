@@ -22,8 +22,8 @@ aTileset_t* a_TilesetCreate( const char* filename,
 
   for ( int i = 0; i < temp_sheet->img_count; i++ )
   {
-    int row = i / temp_sheet->v_count;
-    int col = i % temp_sheet->v_count;
+    int row = i % temp_sheet->v_count;
+    int col = i / temp_sheet->v_count;
     new_set[i].img = a_ImageFromSpriteSheet( temp_sheet, row, col );
   }
 

@@ -11,10 +11,17 @@ static void DrawFPS( void );
 static void sLogic( float );
 static void sDraw( float );
 
+aTileset_t* test_set;
+aWorld_t* world;
+
 void Init_Stage( void )
 {
   app.delegate.logic = sLogic;
   app.delegate.draw  = sDraw;
+  
+  test_set = a_TilesetCreate( "resources/assets/tilemap.png", 32, 32 );
+
+  world = a_2DWorldCreate( 10, 10, 32, 32 );
   
   a_WidgetsInit( "resources/widgets/load_img_menu.auf" );
   app.active_widget = a_GetWidget( "img_load" );
@@ -43,6 +50,7 @@ static void sLogic( float dt )
 static void sDraw( float dt )
 {
   DrawFPS();
+  a_2DWorldDraw( 0, 0, world, test_set );
   a_DrawWidgets();
 }
 

@@ -33,11 +33,11 @@ aSpriteSheet_t* a_SpriteSheetCreate( const char* filename,
 
 aImage_t* a_ImageFromSpriteSheet( aSpriteSheet_t* sheet, int x, int y )
 {
-  aImage_t* sprite  = a_ImageCreate( sheet->img_width, sheet->img_height );
-  aRectf_t src_rect = (aRectf_t){ .x = x * sheet->img_width,
-                                  .y = y * sheet->img_height,
-                                  .w = sheet->img_width,
-                                  .h = sheet->img_height };
+  aImage_t* sprite  = a_ImageCreate( sheet->s_width, sheet->s_height );
+  aRectf_t src_rect = (aRectf_t){ .x = x * sheet->s_width,
+                                  .y = y * sheet->s_height,
+                                  .w = sheet->s_width,
+                                  .h = sheet->s_height };
   
   a_BlitSurfaceToSurfaceScaled( sheet->sheet, &src_rect, sprite, NULL, 1 );
   
