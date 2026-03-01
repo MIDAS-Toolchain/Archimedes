@@ -375,17 +375,20 @@ void a_DoWidget( void )
       
       if ( focused->type == WT_INPUT || focused->type == WT_CONTROL )
       {
-        if ( app.mouse.button == 1 && app.mouse.clicks == 2 &&
-          WithinRangePadded( app.mouse.x, app.mouse.y, current ) )
+        if ( current != NULL )
         {
-          if ( app.active_widget->type == WT_INPUT )
+          if ( app.mouse.button == 1 && app.mouse.clicks == 2 &&
+            WithinRange( app.mouse.x, app.mouse.y, current->rect ) )
           {
-            app.mouse.button = 0;
-            app.mouse.clicks = 0;
-            cursor_blink = 0;
-            handle_input_widget = 1;
-            memset( app.input_text, 0, sizeof( app.input_text ) );
-            return;
+            if ( app.active_widget->type == WT_INPUT )
+            {
+              app.mouse.button = 0;
+              app.mouse.clicks = 0;
+              cursor_blink = 0;
+              handle_input_widget = 1;
+              memset( app.input_text, 0, sizeof( app.input_text ) );
+              return;
+            }
           }
         }
       }
