@@ -414,6 +414,27 @@ void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,
   dest->rect = (aRectf_t){ 0, 0, dest->surface->w, dest->surface->h };
 }
 
+void a_BlitTextureRect( SDL_Texture* texture, SDL_Rect* src, float x, float y,
+                        float scale, aColor_t color )
+{
+  if ( !texture || !src ) return;
+  
+  SDL_SetTextureColorMod( texture, color.r, color.g, color.b);
+  SDL_SetTextureAlphaMod( texture, color.a );
+
+  SDL_Rect dest = {
+    .x = x,
+    .y = y,
+    .w = src->w * scale,
+    .h = src->h * scale
+  };
+  
+  SDL_RenderCopy( app.renderer, texture, src, &dest );
+  
+  SDL_SetTextureColorMod( texture, 255, 255, 255);
+  SDL_SetTextureAlphaMod( texture, 255 );
+}
+
 void a_UpdateTitle( const char *title )
 {
   SDL_SetWindowTitle( app.window, title );

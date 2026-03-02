@@ -1102,6 +1102,8 @@ void a_BlitSurfaceToSurfaceScaled( aImage_t* src, aRectf_t* src_rect,
                                    aImage_t* dest, aRectf_t* dest_rect,
                                    float scale );
 
+void a_BlitTextureRect( SDL_Texture* texture, SDL_Rect* rect, float x, float y,
+                        float scale, aColor_t color );
 /**
  * Update the window title text
  *
@@ -1322,6 +1324,9 @@ void a_DrawText( const char* content, int x, int y, aTextStyle_t style );
  * @param font_type Font type (e.g. FONT_CODE_PAGE_437)
  */
 void a_DrawGlyph( const char* glyph, int x, int y, int w, int h,
+                  aColor_t fg, aColor_t bg, int font_type );
+
+void a_DrawGlyph_special( int glyph_index, aRectf_t rect,
                   aColor_t fg, aColor_t bg, int font_type );
 
 /**
@@ -1578,6 +1583,8 @@ uint8_t a_ViewportIsPointVisible( aPoint2f_t point );
 void a_ViewportDrawPoint( aPoint3f_t p, aColor_t color );
 void a_ViewportDrawRect( aRectf_t rect, aColor_t color );
 void a_ViewportBlit( aImage_t* img, float x, float y );
+void a_ViewportBlitTextureRect( SDL_Texture* tex, SDL_Rect* src,
+                                float x, float y, aColor_t color );
 
 void a_ViewportInput( aRectf_t* viewport, float width, float height );
 

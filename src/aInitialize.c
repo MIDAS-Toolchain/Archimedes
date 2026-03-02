@@ -14,6 +14,8 @@
  *                    Mathew Storm <smattymat@gmail.com>
  */
 
+#include <SDL2/SDL_render.h>
+#include <SDL2/SDL_ttf.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -141,6 +143,22 @@ void a_Quit( void )
     free( app.img_cache );
     app.img_cache = NULL;
   }
+  
+  for ( int i = 0; i < FONT_MAX; i++ )
+  {
+    if ( app.font_textures[i] != NULL )
+    {
+      SDL_DestroyTexture( app.font_textures[i] );
+      app.font_textures[i] = NULL;
+    }
+    
+    if ( app.fonts[i] != NULL )
+    {
+      TTF_CloseFont( app.fonts[i] );
+    }
+  }
+
+  a_WidgetCacheFree();
 
   // Clean up audio system (before SDL shutdown)
   a_AudioQuit();

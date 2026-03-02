@@ -131,6 +131,38 @@ void a_ViewportBlit( aImage_t* img, float x, float y )
   }
 }
 
+void a_ViewportBlitTextureRect( SDL_Texture* tex, SDL_Rect* src,
+                                float x, float y, aColor_t color )
+{
+  if ( !tex || !src ) return;
+
+  aPoint2f_t current_scale = a_ViewportCalculateScale();
+
+  float viewport_x1 = app.g_viewport.x - app.g_viewport.w;
+  float viewport_y1 = app.g_viewport.y - app.g_viewport.h;
+
+  float world_x1 = x - src->w;
+  float world_y1 = y - src->h;
+
+  float world_width  = src->w;
+  float world_height = src->h;
+
+  SDL_FRect r = {
+    ( ( world_x1 - viewport_x1 ) * current_scale.x ),
+    ( ( world_y1 - viewport_y1 ) * current_scale.y ),
+    ( world_width  * current_scale.x ),
+    ( world_height * current_scale.y )
+  };
+  
+  SDL_SetTextureColorMod( tex, color.r, color.g, color.b );
+  SDL_SetTextureAlphaMod( tex, color.a );
+  
+  SDL_RenderCopyF( app.renderer, tex, src, &r );
+  
+  SDL_SetTextureColorMod( tex, 255, 255, 255);
+  SDL_SetTextureAlphaMod( tex, 255 );
+}
+
 void a_ViewportInput( aRectf_t* viewport, float width, float height )
 {
   scale = a_ViewportCalculateScale();

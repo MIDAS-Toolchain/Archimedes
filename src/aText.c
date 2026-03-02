@@ -291,6 +291,7 @@ static void initFontPNG( const char* filename, const int font_type,
 
   app.font_textures[font_type] = SDL_CreateTextureFromSurface( app.renderer, surface );
   SDL_FreeSurface( surface );
+  SDL_FreeSurface( font_surf );
 }
 
 static void initFont( const char* filename, const int font_type, const int font_size )
@@ -549,6 +550,21 @@ void a_DrawGlyph( const char* glyph, int x, int y, int w, int h,
   int c = glyph[0] - 1;
   SDL_Rect* src = &app.glyphs[font_type][c];
   SDL_Rect dest = { x, y, w, h };
+
+  SDL_SetTextureColorMod( app.font_textures[font_type], fg.r, fg.g, fg.b );
+  SDL_RenderCopy( app.renderer, app.font_textures[font_type], src, &dest );
+}
+
+void a_DrawGlyph_special( int glyph_index, aRectf_t rect,
+                  aColor_t fg, aColor_t bg, int font_type )
+{
+  if ( glyph_index > MAX_GLYPHS) return;
+
+  if ( bg.a > 0 )
+    a_DrawFilledRect( (aRectf_t){ rect.x, rect.y, rect.w, rect.h }, bg );
+
+  SDL_Rect* src = &app.glyphs[font_type][glyph_index];
+  SDL_Rect dest = { rect.x, rect.y, rect.w, rect.h };
 
   SDL_SetTextureColorMod( app.font_textures[font_type], fg.r, fg.g, fg.b );
   SDL_RenderCopy( app.renderer, app.font_textures[font_type], src, &dest );
