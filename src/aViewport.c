@@ -108,9 +108,9 @@ void a_ViewportBlit( aImage_t* img, float x, float y )
   float world_height = img->rect.h;
 
   SDL_FRect r = {
-    ( ( world_x1 - viewport_x1 ) * current_scale.x ),
+    ( ( world_x1 - viewport_x1 ) * current_scale.y ),
     ( ( world_y1 - viewport_y1 ) * current_scale.y ),
-    ( world_width  * current_scale.x ),
+    ( world_width  * current_scale.y ),
     ( world_height * current_scale.y )
   };
   
@@ -148,9 +148,9 @@ void a_ViewportBlitTextureRect( SDL_Texture* tex, SDL_Rect* src,
   float world_height = src->h;
 
   SDL_FRect r = {
-    ( ( world_x1 - viewport_x1 ) * current_scale.x ),
+    ( ( world_x1 - viewport_x1 ) * current_scale.y ),
     ( ( world_y1 - viewport_y1 ) * current_scale.y ),
-    ( world_width  * current_scale.x ),
+    ( world_width  * current_scale.y ),
     ( world_height * current_scale.y )
   };
   

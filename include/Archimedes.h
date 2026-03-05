@@ -2218,6 +2218,7 @@ void a_AnimationPlay( aPoint2f_t pos, aAnimation_t* animtion );
 
 aSpriteSheet_t* a_SpriteSheetCreate( const char* filename,
                                      int sprite_w, int sprite_h );
+void a_SpriteSheetDestroy( aSpriteSheet_t* sheet );
 aImage_t* a_ImageFromSpriteSheet( aSpriteSheet_t* sheet, int x, int y );
 
 /*

@@ -31,6 +31,14 @@ aSpriteSheet_t* a_SpriteSheetCreate( const char* filename,
   return new_sheet;
 }
 
+void a_SpriteSheetDestroy( aSpriteSheet_t* sheet )
+{
+  if ( sheet == NULL ) return;
+
+  //a_ImageFree( sheet->sheet );
+  free( sheet );
+}
+
 aImage_t* a_ImageFromSpriteSheet( aSpriteSheet_t* sheet, int x, int y )
 {
   aImage_t* sprite  = a_ImageCreate( sheet->s_width, sheet->s_height );
