@@ -73,16 +73,16 @@ void a_ViewportDrawRect( aRectf_t rect, aColor_t color )
   float viewport_x1 = app.g_viewport.x - app.g_viewport.w;
   float viewport_y1 = app.g_viewport.y - app.g_viewport.h;
 
-  float world_x1 = rect.x - rect.w;
-  float world_y1 = rect.y - rect.h;
+  float world_x1 = rect.x;
+  float world_y1 = rect.y;
 
   float world_width  = rect.w ;
   float world_height = rect.h ;
 
   SDL_Rect r = {
-    (int)( ( world_x1 - viewport_x1 ) * current_scale.x ),
+    (int)( ( world_x1 - viewport_x1 ) * current_scale.y ),
     (int)( ( world_y1 - viewport_y1 ) * current_scale.y ),
-    (int)( world_width  * current_scale.x ),
+    (int)( world_width  * current_scale.y ),
     (int)( world_height * current_scale.y )
   };
   
