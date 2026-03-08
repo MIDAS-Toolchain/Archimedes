@@ -1485,6 +1485,35 @@ aWidget_t a_WidgetGetHeadWidget( void );
 void a_OutputWidgetSetText( aWidget_t* w, const char* text );
 const char* a_OutputWidgetGetText( aWidget_t* w );
 
+/**
+ * @brief Add a button widget to an existing container at runtime.
+ *
+ * Reallocs the container's components array, initializes a new WT_BUTTON,
+ * and repositions all components using the container's flex/spacing rules.
+ * The new button inherits fg, bg, and sounds from the container.
+ *
+ * @param container_name  Name of the container widget
+ * @param button_name     Unique name for the new button
+ * @param label           Display text for the button
+ * @param action          Callback when button is activated (or NULL)
+ * @return Pointer to the new aWidget_t, or NULL on failure
+ */
+aWidget_t* a_ContainerAddButton( const char* container_name,
+                                  const char* button_name,
+                                  const char* label,
+                                  void (*action)(void) );
+
+/**
+ * @brief Remove all components from a container, freeing their resources.
+ *
+ * Frees images, sounds, and type-specific data for each component.
+ * Resets num_components to 0, components to NULL, and focus_index to 0.
+ * Safe to call on an already-empty container.
+ *
+ * @param container_name  Name of the container widget
+ */
+void a_ContainerClearComponents( const char* container_name );
+
 /*
 ---------------------------------------------------------------
 ---                      Widget Parser                      ---

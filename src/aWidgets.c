@@ -40,6 +40,7 @@ static int WithinRangePadded( int x, int y, aWidget_t* w );
 static int WithinRange( int x, int y, aRectf_t rect );
 static void ClearWidgetsState( void );
 static void ContainerWidgetFree( aContainerWidget_t* con, aWidget_t* parent );
+static void ReflowContainer( aWidget_t* container_widget, aContainerWidget_t* con );
 
 static void WidgetColor( aWidget_t* w, aColor_t* c );
 
@@ -273,6 +274,57 @@ void a_DoWidget( void )
          app.active_widget != NULL && app.active_widget->type == WT_CONTAINER )
     {
       focused_container = app.active_widget;
+    }
+
+    /* Tab / Shift+Tab — cycle focus between top-level containers */
+    if ( app.keyboard[SDL_SCANCODE_TAB] )
+    {
+      app.keyboard[SDL_SCANCODE_TAB] = 0;
+
+      int direction = app.keyboard[SDL_SCANCODE_LSHIFT] ||
+                      app.keyboard[SDL_SCANCODE_RSHIFT] ? -1 : 1;
+
+      aWidget_t* candidates[64];
+      int count = 0;
+      for ( aWidget_t* w = widget_head.next; w != NULL && count < 64; w = w->next )
+      {
+        if ( w->type == WT_CONTAINER && w->hidden == 0 )
+          candidates[count++] = w;
+      }
+
+      if ( count > 0 )
+      {
+        int current = -1;
+        for ( int i = 0; i < count; i++ )
+        {
+          if ( candidates[i] == focused_container )
+          {
+            current = i;
+            break;
+          }
+        }
+
+        /* If no container focused yet, position so first Tab → 0, first Shift+Tab → last */
+        if ( current == -1 )
+          current = ( direction == 1 ) ? count - 1 : 0;
+
+        int next = ( current + direction + count ) % count;
+
+        if ( candidates[next] != focused_container )
+        {
+          focused_container = candidates[next];
+          app.active_widget = candidates[next];
+
+          aContainerWidget_t* con = ( aContainerWidget_t* )candidates[next]->data;
+          if ( con->num_components > 0 )
+          {
+            if ( direction == 1 )
+              con->focus_index = 0;
+            else
+              con->focus_index = con->num_components - 1;
+          }
+        }
+      }
     }
 
     /* Keyboard navigation within focused container */
@@ -629,6 +681,62 @@ aContainerWidget_t* a_GetContainerFromWidget( const char* name )
 aWidget_t a_WidgetGetHeadWidget( void )
 {
   return widget_head;
+}
+
+aWidget_t* a_ContainerAddButton( const char* container_name,
+                                  const char* button_name,
+                                  const char* label,
+                                  void (*action)(void) )
+{
+  aWidget_t* w = a_GetWidget( container_name );
+  aContainerWidget_t* con = a_GetContainerFromWidget( container_name );
+
+  if ( w == NULL || con == NULL ) return NULL;
+
+  aWidget_t* new_components = realloc( con->components,
+                                        ( con->num_components + 1 ) * sizeof( aWidget_t ) );
+  if ( new_components == NULL ) return NULL;
+
+  con->components = new_components;
+
+  aWidget_t* btn = &con->components[con->num_components];
+  memset( btn, 0, sizeof( aWidget_t ) );
+
+  btn->type = WT_BUTTON;
+  STRCPY( btn->name, button_name );
+  STRCPY( btn->label, label );
+  btn->hide_label = 0;
+  btn->boxed = 1;
+  btn->hidden = 0;
+  btn->padding = w->padding;
+  btn->state = WI_BACKGROUND;
+  btn->action = action;
+  btn->fg = w->fg;
+  btn->bg = w->bg;
+  btn->click_sound = w->click_sound;
+  btn->hover_sound = w->hover_sound;
+
+  CreateButtonWidget( btn );
+
+  con->num_components++;
+
+  ReflowContainer( w, con );
+
+  return btn;
+}
+
+void a_ContainerClearComponents( const char* container_name )
+{
+  aWidget_t* w = a_GetWidget( container_name );
+  aContainerWidget_t* con = a_GetContainerFromWidget( container_name );
+
+  if ( w == NULL || con == NULL || con->num_components == 0 ) return;
+
+  ContainerWidgetFree( con, w );
+
+  con->components = NULL;
+  con->num_components = 0;
+  con->focus_index = 0;
 }
 
 static void LoadWidgets( const char* filename )
@@ -2072,7 +2180,13 @@ static void DrawButtonWidget( aWidget_t* w )
           .w = ( w->rect.w + pl + pr ),
           .h = ( w->rect.h + pt + pb ) };
         a_DrawFilledRect( rect, w->bg );
-        a_DrawRect( rect, black );
+
+        aColor_t border = black;
+        if ( w->state == WI_HOVERING || w->state == WI_PRESSED )
+        {
+          border = w->fg;
+        }
+        a_DrawRect( rect, border );
       }
     }
 
@@ -2482,12 +2596,7 @@ int a_WidgetCacheFree( void )
   {
     for ( int i = 0; i < MAX_WIDGET_IMAGE; i++ )
     {
-      if ( widget_head.images[i] )
-      {
-        SDL_FreeSurface( widget_head.images[i]->surface );
-        SDL_DestroyTexture( widget_head.images[i]->texture );
-        free( widget_head.images[i]->filename );
-      }
+      widget_head.images[i] = NULL;
     }
 
     aWidget_t* current = widget_head.next;
@@ -2585,6 +2694,105 @@ int a_WidgetCacheFree( void )
   return 0;
 }
 
+static void ReflowContainer( aWidget_t* w, aContainerWidget_t* con )
+{
+  if ( con == NULL || con->num_components == 0 ) return;
+
+  int temp_x = w->rect.x;
+  int temp_y = w->rect.y;
+
+  int max_component_x_plus_w = 0;
+  int max_component_y_plus_h = 0;
+
+  for ( int i = 0; i < con->num_components; i++ )
+  {
+    aWidget_t* current = &con->components[i];
+
+    int cpl, cpr, cpt, cpb;
+    resolve_padding( current, &cpl, &cpr, &cpt, &cpb );
+
+    if ( w->flex == 1 || w->flex == 2 )
+    {
+      current->rect.x = temp_x + cpl;
+      current->rect.y = temp_y + cpt;
+    }
+
+    int widget_effective_w = current->rect.w;
+    int widget_effective_h = current->rect.h;
+
+    int current_widget_max_x_extent = current->rect.x + current->rect.w;
+    int current_widget_max_y_extent = current->rect.y + current->rect.h;
+
+    if ( w->flex == 1 )
+      temp_x += ( cpl + widget_effective_w + cpr + con->spacing );
+
+    if ( w->flex == 2 )
+      temp_y += ( cpt + widget_effective_h + cpb + con->spacing );
+
+    current_widget_max_x_extent += cpr;
+    current_widget_max_y_extent += cpb;
+
+    if ( current_widget_max_x_extent > max_component_x_plus_w )
+      max_component_x_plus_w = current_widget_max_x_extent;
+
+    if ( current_widget_max_y_extent > max_component_y_plus_h )
+      max_component_y_plus_h = current_widget_max_y_extent;
+  }
+
+  if ( w->flex == 1 || w->flex == 2 )
+  {
+    int content_w = max_component_x_plus_w - w->rect.x;
+    int content_h = max_component_y_plus_h - w->rect.y;
+
+    /* auto-size the container to fit its content */
+    if ( content_w > w->rect.w ) w->rect.w = content_w;
+    if ( content_h > w->rect.h ) w->rect.h = content_h;
+    con->rect.w = w->rect.w;
+    con->rect.h = w->rect.h;
+
+    if ( w->justify > 0 )
+    {
+      int content_size   = ( w->flex == 1 ) ? content_w : content_h;
+      int container_size = ( w->flex == 1 ) ? w->rect.w : w->rect.h;
+
+      int extra = container_size - content_size;
+      if ( extra > 0 )
+      {
+        int offset = 0;
+        if ( w->justify == 1 ) offset = extra / 2;
+        else if ( w->justify == 2 ) offset = extra;
+
+        for ( int j = 0; j < con->num_components; j++ )
+        {
+          if ( w->flex == 1 ) con->components[j].rect.x += offset;
+          else                con->components[j].rect.y += offset;
+        }
+      }
+    }
+
+    if ( w->align > 0 )
+    {
+      int cross_size = ( w->flex == 1 ) ? w->rect.h : w->rect.w;
+
+      for ( int j = 0; j < con->num_components; j++ )
+      {
+        aWidget_t* c = &con->components[j];
+        int child_size = ( w->flex == 1 ) ? c->rect.h : c->rect.w;
+        int extra = cross_size - child_size;
+        if ( extra > 0 )
+        {
+          int offset = 0;
+          if ( w->align == 1 ) offset = extra / 2;
+          else if ( w->align == 2 ) offset = extra;
+
+          if ( w->flex == 1 ) c->rect.y = w->rect.y + offset;
+          else                c->rect.x = w->rect.x + offset;
+        }
+      }
+    }
+  }
+}
+
 static void ContainerWidgetFree( aContainerWidget_t* con, aWidget_t* parent )
 {
   aSelectWidget_t* temp_select = NULL;
@@ -2601,28 +2809,37 @@ static void ContainerWidgetFree( aContainerWidget_t* con, aWidget_t* parent )
       current->action = NULL;
     }
 
+    /* release image references (cache owns the images) */
+    for ( int j = 0; j < MAX_WIDGET_IMAGE; j++ )
+    {
+      current->images[j] = NULL;
+    }
+
     switch ( current->type )
     {
       case WT_SELECT:
         temp_select = (aSelectWidget_t*)current->data;
 
-        for ( int i = 0; i < temp_select->num_options; i++ )
+        for ( int j = 0; j < temp_select->num_options; j++ )
         {
-          free( temp_select->options[i] );
+          free( temp_select->options[j] );
         }
 
         free( temp_select->options );
+        free( temp_select );
         break;
 
       case WT_INPUT:
         temp_input = (aInputWidget_t*)current->data;
         free( temp_input->text );
+        free( temp_input );
         break;
 
       case WT_OUTPUT:
       {
         aOutputWidget_t* temp_output = (aOutputWidget_t*)current->data;
         free( temp_output->text );
+        free( temp_output );
         break;
       }
 
@@ -2643,17 +2860,10 @@ static void ContainerWidgetFree( aContainerWidget_t* con, aWidget_t* parent )
         break;
     }
 
-    if ( current->calc_x != NULL )
-    {
-      free( current->calc_x );
-      current->calc_x = NULL;
-    }
-
-    if ( current->calc_y != NULL )
-    {
-      free( current->calc_y );
-      current->calc_y = NULL;
-    }
+    if ( current->calc_x != NULL ) { free( current->calc_x ); current->calc_x = NULL; }
+    if ( current->calc_y != NULL ) { free( current->calc_y ); current->calc_y = NULL; }
+    if ( current->calc_w != NULL ) { free( current->calc_w ); current->calc_w = NULL; }
+    if ( current->calc_h != NULL ) { free( current->calc_h ); current->calc_h = NULL; }
 
     /* free child sounds only if they were loaded by the child (not inherited) */
     if ( current->click_sound != NULL &&
