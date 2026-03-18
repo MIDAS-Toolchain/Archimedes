@@ -78,12 +78,14 @@ void a_ViewportDrawRect( aRectf_t rect, aColor_t color )
 
   float world_width  = rect.w ;
   float world_height = rect.h ;
+  
+  float uniform_scale = ( current_scale.x < current_scale.y ) ? current_scale.x : current_scale.y;
 
   SDL_Rect r = {
-    (int)( ( world_x1 - viewport_x1 ) * current_scale.y ),
-    (int)( ( world_y1 - viewport_y1 ) * current_scale.y ),
-    (int)( world_width  * current_scale.y ),
-    (int)( world_height * current_scale.y )
+    (int)( ( world_x1 - viewport_x1 ) * uniform_scale ),
+    (int)( ( world_y1 - viewport_y1 ) * uniform_scale ),
+    (int)( world_width  * uniform_scale ),
+    (int)( world_height * uniform_scale )
   };
   
   SDL_SetRenderDrawBlendMode( app.renderer, SDL_BLENDMODE_BLEND );

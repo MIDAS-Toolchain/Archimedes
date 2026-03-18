@@ -235,7 +235,9 @@ void a_Blit( aImage_t* img, float x, float y )
   dest.w = temp_w;
   dest.h = temp_h;
   
-  SDL_RenderCopyF( app.renderer, img->texture, NULL, &dest );
+  //SDL_RenderCopyF( app.renderer, img->texture, NULL, &dest );
+  SDL_RenderCopyExF( app.renderer, img->texture, NULL, &dest,
+                     img->angle, NULL, img->flip );
   
   if ( img->color_modulate )
   {

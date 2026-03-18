@@ -52,6 +52,9 @@ aImage_t* a_ImageLoad( const char *filename )
     
     img->color_modulate = 0;
     img->color = black;
+
+    img->angle = 0.0f;
+    img->flip = A_FLIP_NONE;
     
     img->rect = (aRectf_t){
       .x = 0,
@@ -149,6 +152,8 @@ aImage_t* a_ImageCreate( int width, int height )
   img->filename = NULL;
   img->color_modulate = 0;
   img->color = white;
+  img->angle = 0.0f;
+  img->flip = A_FLIP_NONE;
   img->rect = (aRectf_t){ 0, 0, width, height };
 
   return img;

@@ -115,6 +115,13 @@ typedef enum
   FOREGROUND
 } Ground_t;
 
+enum
+{
+  A_FLIP_NONE = 0,
+  A_FLIP_HORIZONTAL,
+  A_FLIP_VERTICAL
+};
+
 /*
 ---------------------------------------------------------------
 ---                         Structs                         ---
@@ -192,6 +199,8 @@ typedef struct
   aRectf_t rect;
   int color_modulate;
   aColor_t color;
+  float angle;
+  int flip;
 } aImage_t;
 
 typedef struct
