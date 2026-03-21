@@ -75,9 +75,9 @@ static void sDraw( float dt )
     float x = ( (float)WORLD_WIDTH/2 ) + ((float)sheet->img_width/2);
     float y = ( (float)WORLD_HEIGHT/2 ) + ((float)sheet->img_height/2);
     a_ViewportBlit( sheet->sheet, x, y );
-    for ( int j = 1; j <= sheet->v_count; j++ )
+    for ( int j = 0; j < sheet->v_count; j++ )
     {
-      for ( int i = 1; i <= sheet->h_count; i++ )
+      for ( int i = 0; i < sheet->h_count; i++ )
       {
         int w = i * g_sprite_w;
         int h = j * g_sprite_h;

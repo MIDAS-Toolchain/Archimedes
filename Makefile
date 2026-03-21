@@ -53,6 +53,7 @@ ARCHIMEDES_SRCS = \
     aAudio.c \
     aAUF.c \
     aAUFParser.c \
+		aCamera2D.c \
     aDeltaTime.c \
     aDraw.c \
     aImage.c \

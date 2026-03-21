@@ -205,6 +205,19 @@ typedef struct
 
 typedef struct
 {
+  float x, y;
+  int w, h;
+  float offset_x, offset_y;
+  float zoom;
+  float zoom_speed;
+  struct{
+    float intensity;
+    int duration;
+  } shake;
+} aCamera2D_t;
+
+typedef struct
+{
   aImage_t* sheet;
   int s_width, s_height;
   int img_width, img_height;
@@ -2278,6 +2291,24 @@ void a_2DWorldDraw( int x_off, int y_off,
 
 aTileset_t* a_TilesetCreate( const char* filename,
                              const int tile_w, const int tile_h );
+
+/*
+---------------------------------------------------------------
+---                      Camera2D                           ---
+---------------------------------------------------------------
+*/
+
+aCamera2D_t a_Camera2DInit( const int screen_width, const int screen_height );
+void a_CameraUpdate( aCamera2D_t* cam, aRectf_t* rect,
+                     const int MAX_WIDTH, const int MAX_HEIGHT );
+void a_CameraInput( aCamera2D_t* cam,
+                    const int MAX_WIDTH, const int MAX_HEIGHT );
+void a_CameraShake( aCamera2D_t* cam,
+                    const int intensity, const int duration );
+uint8_t a_IsOnCamera( aCamera2D_t* cam, aRectf_t* obj );
+void a_WorldToCamera( aCamera2D_t* cam,
+                      const int Wx, const int Wy,
+                      int* Sx, int* Sy );
 
 #endif
 

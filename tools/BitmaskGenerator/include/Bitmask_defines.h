@@ -7,5 +7,15 @@
 #define WORLD_WIDTH  1024
 #define WORLD_HEIGHT 1024
 
+#define NW   1
+#define N    2
+#define NE   4
+#define W    8
+#define E   16
+#define SW  32
+#define S   64
+#define SE 128
+
+
 #endif
 

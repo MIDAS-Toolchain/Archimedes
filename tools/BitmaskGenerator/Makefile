@@ -27,7 +27,7 @@ BITMASK_GEN_SRCS = Bitmask_stage.c
 
 BITMASK_LIB_OBJS = $(patsubst %.c, $(OBJ_DIR)/%.o, $(BITMASK_GEN_SRCS))
 
-BITMASK_OBJ = $(OBJ_DIR)/BitmaskGen.o
+BITMASK_OBJ = $(OBJ_DIR)/main.o
 
 BITMASK_EXE_OBJS = $(BITMASK_LIB_OBJS) $(BITMASK_OBJ)
 
