@@ -23,7 +23,10 @@ BITMASK_C_FLAGS = $(C_FLAGS) -ggdb -lArchimedes
 # BITMASK GENERATOR LIBRARY OBJECTS (Core C Files)
 # ====================================================================
 
-BITMASK_GEN_SRCS = Bitmask_stage.c
+BITMASK_GEN_SRCS = Bitmask_stage.c\
+									 BitmaskGen.c \
+									 God.c \
+									 Tilemask.c
 
 BITMASK_LIB_OBJS = $(patsubst %.c, $(OBJ_DIR)/%.o, $(BITMASK_GEN_SRCS))
 
