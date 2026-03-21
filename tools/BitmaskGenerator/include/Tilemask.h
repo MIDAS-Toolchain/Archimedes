@@ -1,5 +1,5 @@
-#ifndef __BM_GENERATOR_H__
-#define __BM_GENERATOR_H__
+#ifndef __TILEMASK_GENERATOR_H__
+#define __TILEMASK_GENERATOR_H__
 
 #include "Bitmask_structs.h"
 

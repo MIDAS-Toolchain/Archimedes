@@ -3,7 +3,10 @@
 #include <Archimedes.h>
 
 #include "Bitmask_defines.h"
+#include "Bitmask_structs.h"
+#include "BitmaskGen.h"
 #include "God.h"
+#include "Tilemask.h"
 
 static void DrawFPS( void );
 
@@ -19,6 +22,8 @@ int g_sprite_h = 0;
 aCamera2D_t g_camera;
 aRectf_t GOD;
 
+TileMask_t* tilemask = NULL;
+
 void Init_Stage( void )
 {
   app.delegate.logic = sLogic;
@@ -32,6 +37,8 @@ void Init_Stage( void )
   GOD = (aRectf_t){ .x = (float)WORLD_WIDTH  / 2,
                     .y = (float)WORLD_HEIGHT / 2,
                     .w = 32, .h = 32 };
+  
+  tilemask = TileMaskGenerate( sheet->v_count, sheet->h_count );
 
   a_WidgetsInit( "resources/load_img_menu.auf" );
   app.active_widget = a_GetWidget( "img_load" );
@@ -70,6 +77,43 @@ static void sLogic( float dt )
   a_CameraInput( &g_camera, WORLD_WIDTH, WORLD_HEIGHT );
 
   a_CameraUpdate( &g_camera, &GOD, WORLD_WIDTH, WORLD_HEIGHT );
+  
+  if ( sheet != NULL )
+  {
+    float world_x = ( app.mouse.x / g_camera.zoom ) + g_camera.x;
+    float world_y = ( app.mouse.y / g_camera.zoom ) + g_camera.y;
+    
+    float sprite_x = ( (float)WORLD_WIDTH/2 ) - ((float)sheet->img_width/2);
+    float sprite_y = ( (float)WORLD_HEIGHT/2 ) - ((float)sheet->img_height/2);
+    
+    if ( world_x >= sprite_x && world_y >= sprite_y &&
+         world_x < ( sprite_x + sheet->img_width ) &&
+         world_y < ( sprite_y + sheet->img_height ) )
+    {
+      float rel_x = world_x - sprite_x;
+      float rel_y = world_y - sprite_y;
+
+      int tile_x = (int)rel_x / DEFAULT_SPRITE_W;
+      int tile_y = (int)rel_y / DEFAULT_SPRITE_H;
+
+
+      int local_x = (int)rel_x % DEFAULT_SPRITE_W;
+      int local_y = (int)rel_y % DEFAULT_SPRITE_W;
+
+      if ( app.mouse.button == 1 )
+      {
+        int index = tile_y * (sheet->v_count) + tile_x;
+        tilemask[index].bitmask = 1;
+
+        int cell_x = local_x / ( DEFAULT_SPRITE_W / 3 );
+        int cell_y = local_y / ( DEFAULT_SPRITE_H / 3 );
+        int cell_index = cell_y * 3 + cell_x;
+
+        tilemask[index].neighbors[cell_index] = 1;
+      }
+    }
+  }
+
 }
 
 static void sDraw( float dt )
@@ -81,15 +125,16 @@ static void sDraw( float dt )
   {
     float x = ( (float)WORLD_WIDTH/2 ) - ((float)sheet->img_width/2);
     float y = ( (float)WORLD_HEIGHT/2 ) - ((float)sheet->img_height/2);
-    
+    aRectf_t screen_sheet_rect = {0};
     aRectf_t sheet_rect = {
-      .x = (x-g_camera.x)  * g_camera.zoom,
-      .y = (y-g_camera.y)  * g_camera.zoom,
-      .w = sheet->img_width * g_camera.zoom,
-      .h = sheet->img_height * g_camera.zoom
+      .x = x,
+      .y = y,
+      .w = sheet->img_width,
+      .h = sheet->img_height
     };
+    a_WorldRectToCameraRect( &g_camera, sheet_rect, &screen_sheet_rect );
 
-    a_BlitRect( sheet->sheet, NULL, &sheet_rect, 1 );
+    a_BlitRect( sheet->sheet, NULL, &screen_sheet_rect, 1 );
 
     for ( int j = 0; j < sheet->v_count; j++ )
     {
@@ -98,21 +143,41 @@ static void sDraw( float dt )
         int w = i * g_sprite_w;
         int h = j * g_sprite_h;
 
+        aRectf_t screen_rect = {0};
         aRectf_t rect = (aRectf_t){
-          .x = ((x-g_camera.x ) + w) * g_camera.zoom,
-          .y = ((y-g_camera.y ) + h) * g_camera.zoom,
-          .w = g_sprite_w * g_camera.zoom-1,
-          .h = g_sprite_h * g_camera.zoom-1
+          .x = x + w,
+          .y = y + h,
+          .w = g_sprite_w,
+          .h = g_sprite_h
         };
+        a_WorldRectToCameraRect( &g_camera, rect, &screen_rect );
 
-        a_DrawRect( rect, red );
+        a_DrawRect( screen_rect, red );
+
+        int tm_index = j * sheet->v_count + i;
         
+        float x1, y1;
+        int w1, h1;
+        w1 = g_sprite_w / 3;
+        h1 = g_sprite_h / 3;
+
         for( int k = 0; k < 9; k++ )
         {
-          int x1, y1, w1, h1;
-          aRectf_t small_rect;
           x1 = k / 3;
           y1 = k % 3;
+          
+          aRectf_t screen_small_rect = {0};
+          aRectf_t small_rect = {
+          .x = ( x1 * w1 ) + rect.x,
+          .y = ( y1 * h1 ) + rect.y,
+          .w = w1,
+          .h = h1
+          };
+
+          int cell_index = y1 * 3 + x1;
+
+          a_WorldRectToCameraRect( &g_camera, small_rect, &screen_small_rect );
+          a_DrawRect( screen_small_rect, tilemask[tm_index].neighbors[cell_index] ? black : green );
         }
       }
     }

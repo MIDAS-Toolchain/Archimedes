@@ -24,7 +24,8 @@ typedef struct bitmask
 typedef struct
 {
   uint8_t bitmask;
-  aPoint2i_t pos;
+  uint8_t neighbors[9];
+  uint8_t bitmask_index; //for multiple bitmask
 } TileMask_t;
 
 #endif

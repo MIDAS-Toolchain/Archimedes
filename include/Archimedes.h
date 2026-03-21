@@ -2309,6 +2309,8 @@ uint8_t a_IsOnCamera( aCamera2D_t* cam, aRectf_t* obj );
 void a_WorldToCamera( aCamera2D_t* cam,
                       const int Wx, const int Wy,
                       int* Sx, int* Sy );
+void a_WorldRectToCameraRect( aCamera2D_t* cam,
+                              const aRectf_t wrect, aRectf_t* srect );
 
 #endif
 

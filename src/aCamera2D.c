@@ -147,7 +147,18 @@ uint8_t a_IsOnCamera( aCamera2D_t* cam, aRectf_t* obj )
 void a_WorldToCamera( aCamera2D_t* cam,
                       const int Wx, const int Wy, int* Sx, int* Sy )
 {
-  *Sx = Wx - (int)cam->x;
-  *Sy = Wy - (int)cam->y;
+  *Sx = ( Wx - (int)cam->x ) * cam->zoom;
+  *Sy = ( Wy - (int)cam->y ) * cam->zoom;
+}
+
+void a_WorldRectToCameraRect( aCamera2D_t* cam,
+                              const aRectf_t wrect, aRectf_t* srect )
+{
+  *srect = (aRectf_t){
+    .x = ( wrect.x - cam->x ) * cam->zoom,
+    .y = ( wrect.y - cam->y ) * cam->zoom,
+    .w = wrect.w * cam->zoom,
+    .h = wrect.h * cam->zoom
+  };
 }
 
