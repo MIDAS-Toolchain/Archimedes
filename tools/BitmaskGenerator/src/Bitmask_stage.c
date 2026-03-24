@@ -23,6 +23,13 @@ aCamera2D_t g_camera;
 aRectf_t GOD;
 
 TileMask_t* tilemask = NULL;
+aTextStyle_t text_style;
+aColor_t cell_select = { .r = 0, .g = 128, .b = 128, .a = 128 };
+
+static int tile_grid = 0;
+static int cell_grid = 0;
+static int show_bitmask = 0;
+static int debug = 0;
 
 void Init_Stage( void )
 {
@@ -39,6 +46,16 @@ void Init_Stage( void )
                     .w = 32, .h = 32 };
   
   tilemask = TileMaskGenerate( sheet->v_count, sheet->h_count );
+  
+  text_style = (aTextStyle_t){
+    .type = FONT_CODE_PAGE_437,
+    .fg = white,
+    .bg = black,
+    .align = TEXT_ALIGN_CENTER,
+    .wrap_width = 0,
+    .scale = 1.0f,
+    .padding = 0
+  };
 
   a_WidgetsInit( "resources/load_img_menu.auf" );
   app.active_widget = a_GetWidget( "img_load" );
@@ -72,6 +89,30 @@ static void sLogic( float dt )
     app.keyboard[A_F1] = 0;
     a_WidgetsInit( "resources/load_img_menu.auf" );
   }
+  
+  if ( app.keyboard[A_F3] == 1 )
+  {
+    app.keyboard[A_F3] = 0;
+    debug = !debug;
+  }
+
+  if ( app.keyboard[A_T] == 1 )
+  {
+    app.keyboard[A_T] = 0;
+    show_bitmask = !show_bitmask;
+  }
+  
+  if ( app.keyboard[A_G] == 1 )
+  {
+    app.keyboard[A_G] = 0;
+    tile_grid = !tile_grid;
+  }
+  
+  if ( app.keyboard[A_C] == 1 )
+  {
+    app.keyboard[A_C] = 0;
+    cell_grid = !cell_grid;
+  }
 
   GodInput(&GOD, 16.0f, WORLD_WIDTH, WORLD_HEIGHT );
   a_CameraInput( &g_camera, WORLD_WIDTH, WORLD_HEIGHT );
@@ -100,16 +141,27 @@ static void sLogic( float dt )
       int local_x = (int)rel_x % DEFAULT_SPRITE_W;
       int local_y = (int)rel_y % DEFAULT_SPRITE_W;
 
+      int index = tile_y * (sheet->v_count) + tile_x;
+
+      int cell_x = local_x / ( DEFAULT_SPRITE_W / 3 );
+      int cell_y = local_y / ( DEFAULT_SPRITE_H / 3 );
+      int cell_index = cell_y * 3 + cell_x;
+
       if ( app.mouse.button == 1 )
       {
-        int index = tile_y * (sheet->v_count) + tile_x;
-        tilemask[index].bitmask = 1;
-
-        int cell_x = local_x / ( DEFAULT_SPRITE_W / 3 );
-        int cell_y = local_y / ( DEFAULT_SPRITE_H / 3 );
-        int cell_index = cell_y * 3 + cell_x;
-
+        //tilemask[index].bitmask = 1;
         tilemask[index].neighbors[cell_index] = 1;
+
+        TileMaskUpdate( tilemask, index );
+      }
+      
+      if ( app.mouse.button == 3 )
+      {
+        tilemask[index].bitmask = 0;
+
+        tilemask[index].neighbors[cell_index] = 0;
+
+        TileMaskUpdate( tilemask, index );
       }
     }
   }
@@ -140,6 +192,8 @@ static void sDraw( float dt )
     {
       for ( int i = 0; i < sheet->h_count; i++ )
       {
+        char buffer[MAX_LINE_LENGTH];
+
         int w = i * g_sprite_w;
         int h = j * g_sprite_h;
 
@@ -150,11 +204,21 @@ static void sDraw( float dt )
           .w = g_sprite_w,
           .h = g_sprite_h
         };
+        
         a_WorldRectToCameraRect( &g_camera, rect, &screen_rect );
-
-        a_DrawRect( screen_rect, red );
+        
+        if( tile_grid || debug )
+        {
+          a_DrawRect( screen_rect, red );
+        }
 
         int tm_index = j * sheet->v_count + i;
+        
+        if ( show_bitmask || debug )
+        {
+          snprintf( buffer, MAX_NAME_LENGTH, "%d", tilemask[tm_index].bitmask );
+          a_DrawText( buffer, screen_rect.x, screen_rect.y, text_style );
+        }
         
         float x1, y1;
         int w1, h1;
@@ -177,7 +241,16 @@ static void sDraw( float dt )
           int cell_index = y1 * 3 + x1;
 
           a_WorldRectToCameraRect( &g_camera, small_rect, &screen_small_rect );
-          a_DrawRect( screen_small_rect, tilemask[tm_index].neighbors[cell_index] ? black : green );
+          if ( cell_grid || debug )
+          {
+            a_DrawRect( screen_small_rect, green );
+          }
+
+          if ( tilemask[tm_index].neighbors[cell_index] )
+          {
+            a_DrawFilledRect( screen_small_rect, cell_select );
+
+          }
         }
       }
     }

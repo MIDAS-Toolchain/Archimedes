@@ -18,6 +18,19 @@ TileMask_t* TileMaskGenerate( int width, int height )
 
 void TileMaskUpdate( TileMask_t* mask, int index )
 {
+  uint8_t bitmask=0;
   
+  for ( int i = 0; i < 8; i++ )
+  {
+    uint8_t temp_mask;
+
+    int neighor_index = ( i < 4 ) ? i : i + 1;
+    
+    temp_mask = mask[index].neighbors[neighor_index];
+
+    bitmask |= temp_mask<<i;
+  }
+
+  mask[index].bitmask |= bitmask;
 }
 
