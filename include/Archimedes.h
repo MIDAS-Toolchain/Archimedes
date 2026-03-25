@@ -304,6 +304,16 @@ typedef struct
 
 typedef struct
 {
+  aRectf_t rect;
+  int spacing;
+  int num_components;
+  int max_display;
+  int focus_index;
+  aWidget_t* components;
+} aDropdownWidget_t;
+
+typedef struct
+{
   int num_options;
   char** options;
   aRectf_t rect;

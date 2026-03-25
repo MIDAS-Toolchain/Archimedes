@@ -3033,3 +3033,4 @@ const char* a_OutputWidgetGetText( aWidget_t* w )
   aOutputWidget_t* output = ( aOutputWidget_t* )w->data;
   return output->text;
 }
+
