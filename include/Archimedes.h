@@ -55,6 +55,8 @@
 #define MAX_WIDGET_IMAGE 4
 #define MAX_WIDGET_COUNT 512
 
+#define MAX_UI_CONTEXTS 4
+
 #define PAN_FACTOR 0.05f
 #define ZOOM_FACTOR 0.9f
 
@@ -314,6 +316,17 @@ typedef struct
 
 typedef struct
 {
+  aRectf_t rect;
+  aRectf_t dragging_area;
+  int offset_x, offset_y;
+  int spacing;
+  int num_components;
+  int focus_index;
+  aWidget_t* components;
+} aDragableWidget_t;
+
+typedef struct
+{
   int num_options;
   char** options;
   aRectf_t rect;
@@ -409,6 +422,22 @@ typedef struct _aImageCache_t
 
 typedef struct
 {
+  aWidget_t* head;
+  aWidget_t* tail;
+  aWidget_t* active_widget;
+  int widget_count;
+
+  char input_text[MAX_INPUT_LENGTH];
+  int is_interacting;
+  
+  int handle_input_widget;
+  int handle_control_widget;
+  
+  aWidget_t* hover_widget;
+}aUIContext_t;
+
+typedef struct
+{
   uint32_t current_time; //Delta time
   uint32_t last_time;
 
@@ -435,7 +464,9 @@ typedef struct
   aColor_t background;
   aImageCache_t* img_cache;
   int keyboard[MAX_KEYBOARD_KEYS];
-  aWidget_t* active_widget;
+  aUIContext_t* ui_layers[MAX_UI_CONTEXTS];
+  int ui_layer_count;
+  int ui_layer_index; //Current UI layer
   double font_scale;
   int font_type;
   SDL_Rect glyphs[FONT_MAX][MAX_GLYPHS];
@@ -447,7 +478,7 @@ typedef struct
   int running;
   char input_text[MAX_INPUT_LENGTH];
   int last_key_pressed;
-  aRectf_t g_viewport;
+  aCamera2D_t g_camera;
   struct {
     int channel_count;       // Total number of mixing channels
     int reserved_channels;   // Channels reserved from auto-allocation
@@ -1442,6 +1473,9 @@ enum
   WT_CONTROL,
   WT_CONTAINER,
   WT_OUTPUT,
+  WT_MODAL,
+  WT_DRAGABLE,
+  WT_DROPDOWN
 };
 
 enum
@@ -1545,6 +1579,65 @@ aWidget_t* a_ContainerAddButton( const char* container_name,
  * @param container_name  Name of the container widget
  */
 void a_ContainerClearComponents( const char* container_name );
+
+
+/*
+---------------------------------------------------------------
+---                    Widget Internal                      ---
+---------------------------------------------------------------
+*/
+
+void _a_Internal_WidgetCreateButton( aWidget_t* w );
+void _a_Internal_WidgetCreateSelect( aWidget_t* w, aAUFNode_t* root );
+void _a_Internal_WidgetCreateSlider( aWidget_t* w, aAUFNode_t* root );
+void _a_Internal_WidgetCreateInput( aWidget_t* w, aAUFNode_t* root );
+void _a_Internal_WidgetCreateOutput( aWidget_t* w, aAUFNode_t* root );
+void _a_Internal_WidgetCreateControl( aWidget_t* w );
+void _a_Internal_WidgetCreateContainer( aWidget_t* w, aAUFNode_t* root );
+void _a_Internal_WidgetCreateModal( aWidget_t* w, aAUFNode_t* root );
+void _a_Internal_WidgetCreateDragableBox( aWidget_t* w, aAUFNode_t* root );
+void _a_Internal_WidgetCreateDropDown( aWidget_t* w, aAUFNode_t* root );
+
+
+/*
+---------------------------------------------------------------
+---                       Widget Draw                       ---
+---------------------------------------------------------------
+*/
+
+void _a_Internal_WidgetDrawButton( aWidget_t* w );
+void _a_Internal_WidgetDrawSelect( aWidget_t* w );
+void _a_Internal_WidgetDrawSlider( aWidget_t* w );
+void _a_Internal_WidgetDrawInput( aWidget_t* w );
+void _a_Internal_WidgetDrawOutput( aWidget_t* w );
+void _a_Internal_WidgetDrawControl( aWidget_t* w );
+void _a_Internal_WidgetDrawContainer( aWidget_t* w );
+void _a_Internal_WidgetDrawModal( aWidget_t* w );
+void _a_Internal_WidgetDrawDragableBox( aWidget_t* w );
+void _a_Internal_WidgetDrawDropDown( aWidget_t* w );
+
+
+/*
+---------------------------------------------------------------
+---                 Widget Utilities                        ---
+---------------------------------------------------------------
+*/
+
+aWidget_t* a_WidgetGetCurrent( void );
+int a_WidgetWithinRangePadded( int x, int y, aWidget_t* w );
+void a_WidgetsClearState( void );
+void a_WidgetContainerFree( aContainerWidget_t* con, aWidget_t* parent );
+void a_WidgetReflowContainer( aWidget_t* container_widget, aContainerWidget_t* con );
+void a_WidgetColor( aWidget_t* w, aColor_t* c );
+
+int _a_Internal_WithinRange( int x, int y, aRectf_t rect );
+aSoundEffect_t* _a_Internal_load_widget_sound( aAUFNode_t* node );
+int _a_Internal_resolve_color_ref( aAUFNode_t* node, aColor_t* out );
+int _a_Internal_resolve_int_ref( aAUFNode_t* node );
+void _a_Internal_resolve_padding( aWidget_t* w,
+                                  int* left, int* right,
+                                  int* top, int* bottom );
+
 
 /*
 ---------------------------------------------------------------
