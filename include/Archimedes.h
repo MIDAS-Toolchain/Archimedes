@@ -429,6 +429,7 @@ typedef struct
 
   char input_text[MAX_INPUT_LENGTH];
   int is_interacting;
+  char* auf_filename;
   
   int handle_input_widget;
   int handle_control_widget;
@@ -466,7 +467,6 @@ typedef struct
   int keyboard[MAX_KEYBOARD_KEYS];
   aUIContext_t* ui_layers[MAX_UI_CONTEXTS];
   int ui_layer_count;
-  int ui_layer_index; //Current UI layer
   double font_scale;
   int font_type;
   SDL_Rect glyphs[FONT_MAX][MAX_GLYPHS];
@@ -1605,16 +1605,17 @@ void _a_Internal_WidgetCreateDropDown( aWidget_t* w, aAUFNode_t* root );
 ---------------------------------------------------------------
 */
 
-void _a_Internal_WidgetDrawButton( aWidget_t* w );
-void _a_Internal_WidgetDrawSelect( aWidget_t* w );
-void _a_Internal_WidgetDrawSlider( aWidget_t* w );
-void _a_Internal_WidgetDrawInput( aWidget_t* w );
-void _a_Internal_WidgetDrawOutput( aWidget_t* w );
-void _a_Internal_WidgetDrawControl( aWidget_t* w );
-void _a_Internal_WidgetDrawContainer( aWidget_t* w );
-void _a_Internal_WidgetDrawModal( aWidget_t* w );
-void _a_Internal_WidgetDrawDragableBox( aWidget_t* w );
-void _a_Internal_WidgetDrawDropDown( aWidget_t* w );
+//cc_index: Current ui Context index
+void _a_Internal_WidgetDrawButton( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawSelect( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawSlider( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawInput( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawOutput( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawControl( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawContainer( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawModal( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawDragableBox( aWidget_t* w, int cc_index );
+void _a_Internal_WidgetDrawDropDown( aWidget_t* w, int cc_index );
 
 
 /*

@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include "Archimedes.h"
 
-void _a_Internal_WidgetDrawButton( aWidget_t* w )
+void _a_Internal_WidgetDrawButton( aWidget_t* w, int cc_index )
 {
   aColor_t c;
   int offset = 0;
@@ -75,7 +75,7 @@ void _a_Internal_WidgetDrawButton( aWidget_t* w )
   }
 }
 
-void _a_Internal_WidgetDrawSelect( aWidget_t* w )
+void _a_Internal_WidgetDrawSelect( aWidget_t* w, int cc_index )
 {
   aColor_t c;
   char text[128];
@@ -99,7 +99,16 @@ void _a_Internal_WidgetDrawSelect( aWidget_t* w )
       a_DrawRect( rect, black );
     }
 
-    aTextStyle_t style = { .type = app.font_type, .fg = c, .bg = {0,0,0,0}, .align = TEXT_ALIGN_LEFT, .wrap_width = 0, .scale = 1.0f, .padding = 0 };
+    aTextStyle_t style = { 
+      .type = app.font_type, 
+      .fg = c, 
+      .bg = {0,0,0,0}, 
+      .align = TEXT_ALIGN_LEFT, 
+      .wrap_width = 0, 
+      .scale = 1.0f, 
+      .padding = 0 
+    };
+    
     a_DrawText( w->label, w->rect.x, w->rect.y, style );
     sprintf( text, "< %s >", s->options[s->value] );
 
@@ -107,7 +116,7 @@ void _a_Internal_WidgetDrawSelect( aWidget_t* w )
   }
 }
 
-void _a_Internal_WidgetDrawSlider( aWidget_t* w )
+void _a_Internal_WidgetDrawSlider( aWidget_t* w, int cc_index )
 {
   aColor_t c;
   aSliderWidget_t* slider;
@@ -151,7 +160,7 @@ void _a_Internal_WidgetDrawSlider( aWidget_t* w )
   }
 }
 
-void _a_Internal_WidgetDrawInput( aWidget_t* w )
+void _a_Internal_WidgetDrawInput( aWidget_t* w, int cc_index )
 {
   aColor_t c;
   aInputWidget_t* input;
@@ -211,8 +220,8 @@ void _a_Internal_WidgetDrawInput( aWidget_t* w )
     uint32_t ticks = SDL_GetTicks();
     uint8_t is_visible = ( ticks % 1000 ) < 500;
 
-    if ( handle_input_widget && is_visible &&
-    strncmp( w->name, app.active_widget->name, MAX_FILENAME_LENGTH ) == 0 )
+    if ( app.ui_layers[cc_index]->handle_input_widget && is_visible &&
+    strncmp( w->name, app.ui_layers[cc_index]->active_widget->name, MAX_FILENAME_LENGTH ) == 0 )
     {
       aRectf_t cursor_rect = ( aRectf_t ){ .x = ( input->rect.x + text_width ),
                                            .y = ( input->rect.y ),
@@ -225,7 +234,7 @@ void _a_Internal_WidgetDrawInput( aWidget_t* w )
 
 }
 
-void _a_Internal_WidgetDrawOutput( aWidget_t* w )
+void _a_Internal_WidgetDrawOutput( aWidget_t* w, int cc_index )
 {
   aColor_t c;
   aOutputWidget_t* output;
@@ -233,7 +242,7 @@ void _a_Internal_WidgetDrawOutput( aWidget_t* w )
 
   output = ( aOutputWidget_t* )w->data;
 
-  WidgetColor( w, &c );
+  a_WidgetColor( w, &c );
 
   if ( w->hidden != 1 )
   {
@@ -265,7 +274,7 @@ void _a_Internal_WidgetDrawOutput( aWidget_t* w )
     if ( w->boxed == 1 )
     {
       int pl, pr, pt, pb;
-      resolve_padding( w, &pl, &pr, &pt, &pb );
+      _a_Internal_resolve_padding( w, &pl, &pr, &pt, &pb );
       aRectf_t rect = (aRectf_t){
         .x = w->rect.x - pl,
         .y = w->rect.y - pt,
@@ -296,7 +305,7 @@ void _a_Internal_WidgetDrawOutput( aWidget_t* w )
 
 }
 
-void _a_Internal_WidgetDrawControl( aWidget_t* w )
+void _a_Internal_WidgetDrawControl( aWidget_t* w, int cc_index )
 {
   aColor_t c;
   aControlWidget_t* control;
@@ -304,14 +313,14 @@ void _a_Internal_WidgetDrawControl( aWidget_t* w )
 
   control = ( aControlWidget_t* )w->data;
 
-  WidgetColor( w, &c );
+  a_WidgetColor( w, &c );
 
   if ( w->hidden != 1 )
   {
     if ( w->boxed == 1 )
     {
       int pl, pr, pt, pb;
-      resolve_padding( w, &pl, &pr, &pt, &pb );
+      _a_Internal_resolve_padding( w, &pl, &pr, &pt, &pb );
       aRectf_t rect = (aRectf_t){ .x = ( w->rect.x - pl ),
                                   .y = ( w->rect.y - pt ),
                                   .w = ( w->rect.w + pl + pr ),
@@ -324,7 +333,8 @@ void _a_Internal_WidgetDrawControl( aWidget_t* w )
     aTextStyle_t style = { .type = app.font_type, .fg = c, .bg = {0,0,0,0}, .align = TEXT_ALIGN_LEFT, .wrap_width = 0, .scale = 1.0f, .padding = 0 };
     a_DrawText( w->label, w->rect.x, w->rect.y, style );
 
-    if ( handle_control_widget && app.active_widget == w )
+    if ( app.ui_layers[cc_index]->handle_control_widget &&
+         app.ui_layers[cc_index]->active_widget == w )
     {
       a_DrawText( "...", control->x, control->y, style );
     }
@@ -348,7 +358,7 @@ void _a_Internal_WidgetDrawControl( aWidget_t* w )
  *
  * @param w A pointer to the `aWidget_t` structure representing the container widget to draw.
  */
-void _a_Internal_WidgetDrawContainer( aWidget_t* w )
+void _a_Internal_WidgetDrawContainer( aWidget_t* w, int cc_index )
 {
   aContainerWidget_t* container;
 
@@ -380,7 +390,7 @@ void _a_Internal_WidgetDrawContainer( aWidget_t* w )
         }
 
         int cpl, cpr, cpt, cpb;
-        resolve_padding( comp, &cpl, &cpr, &cpt, &cpb );
+        _a_Internal_resolve_padding( comp, &cpl, &cpr, &cpt, &cpb );
         float ext_x = comp->rect.x + lw + out->text_offset + tw + cpr;
         float ext_y = comp->rect.y + ( ( lh > th ) ? lh : th ) + cpb;
 
@@ -397,7 +407,7 @@ void _a_Internal_WidgetDrawContainer( aWidget_t* w )
     if ( w->rect.h > cont_h ) cont_h = w->rect.h;
 
     int pl, pr, pt, pb;
-    resolve_padding( w, &pl, &pr, &pt, &pb );
+    _a_Internal_resolve_padding( w, &pl, &pr, &pt, &pb );
     aRectf_t rect = (aRectf_t){
       .x = ( w->rect.x - pl - 5 ),
       .y = ( w->rect.y - pt - 3 ),
@@ -429,27 +439,27 @@ void _a_Internal_WidgetDrawContainer( aWidget_t* w )
       {
         switch ( current.type ) {
           case WT_BUTTON:
-            DrawButtonWidget( &current );
+            _a_Internal_WidgetDrawButton( &current, cc_index );
             break;
 
           case WT_SLIDER:
-            DrawSliderWidget( &current );
+            _a_Internal_WidgetDrawSlider( &current, cc_index );
             break;
 
           case WT_INPUT:
-            DrawInputWidget( &current );
+            _a_Internal_WidgetDrawInput( &current, cc_index );
             break;
 
           case WT_OUTPUT:
-            DrawOutputWidget( &current );
+            _a_Internal_WidgetDrawOutput( &current, cc_index );
             break;
 
           case WT_SELECT:
-            DrawSelectWidget( &current );
+            _a_Internal_WidgetDrawSelect( &current, cc_index );
             break;
 
           case WT_CONTROL:
-            DrawControlWidget( &current );
+            _a_Internal_WidgetDrawControl( &current, cc_index );
             break;
 
           default:
@@ -460,17 +470,17 @@ void _a_Internal_WidgetDrawContainer( aWidget_t* w )
   }
 }
 
-void _a_Internal_WidgetDrawModal( aWidget_t* w )
+void _a_Internal_WidgetDrawModal( aWidget_t* w, int cc_index )
 {
 
 }
 
-void _a_Internal_WidgetDrawDragableBox( aWidget_t* w )
+void _a_Internal_WidgetDrawDragableBox( aWidget_t* w, int cc_index )
 {
 
 }
 
-void _a_Internal_WidgetDrawDropDown( aWidget_t* w )
+void _a_Internal_WidgetDrawDropDown( aWidget_t* w, int cc_index )
 {
 
 }
