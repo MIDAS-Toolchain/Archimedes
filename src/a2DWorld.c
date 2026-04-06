@@ -89,7 +89,7 @@ void a_2DWorldDraw( int x_off, int y_off,
       }
       else
       {
-        a_ViewportBlit( tile_img, x, y );
+        //a_ViewportBlit( tile_img, x, y );
       }
     }
     
