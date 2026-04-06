@@ -231,6 +231,7 @@ typedef struct
   uint32_t paused_ticks;
   uint8_t paused;
   uint8_t started;
+  float accumulator;
 } aTimer_t;
 
 typedef struct
@@ -1665,7 +1666,7 @@ uint32_t a_TimerGetTicks( aTimer_t* timer );
 uint8_t a_TimerStarted( aTimer_t* timer );
 uint8_t a_TimerPaused( aTimer_t* timer );
 int a_TimerOneshot( aTimer_t* timer, const uint32_t wait_ms );
-int a_TimerHz( aTimer_t* timer, const uint32_t frequency );
+int a_TimerHz( aTimer_t* timer, float dt, const uint32_t frequency );
 
 /*
 ---------------------------------------------------------------
