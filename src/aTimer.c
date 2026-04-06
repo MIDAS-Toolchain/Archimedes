@@ -131,3 +131,23 @@ int a_TimerOneshot( aTimer_t* timer, const uint32_t wait_ms )
   return 0;
 }
 
+int a_TimerHz( aTimer_t* timer, const uint32_t frequency )
+{
+  if ( frequency < 0 ) return 0;
+
+  if ( !a_TimerStarted( timer ) )
+  {
+    a_TimerStart( timer );
+    return 0;
+  }
+  
+  uint32_t wait_ms = 1000 / frequency;
+  if ( a_TimerGetTicks( timer ) >= wait_ms )
+  {
+    a_TimerStop( timer );
+    return 1;
+  }
+
+  return 0;
+}
+

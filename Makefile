@@ -66,7 +66,6 @@ ARCHIMEDES_SRCS = \
     aTileBitmask.c \
     aTimer.c \
 	  aUtils.c \
-	  aViewport.c \
     aWidgets.c
 
 WIDGET_EIDTOR_SRCS = WE_stage.c

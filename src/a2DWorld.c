@@ -80,8 +80,8 @@ void a_2DWorldDraw( int x_off, int y_off,
       .padding = 0
     };
 
-    if ( app.g_viewport.x != 0 && app.g_viewport.y != 0
-         && app.g_viewport.w != 0 && app.g_viewport.h != 0 )
+    if ( app.g_camera.x != 0 && app.g_camera.y != 0
+         && app.g_camera.w != 0 && app.g_camera.h != 0 )
     {
       if ( draw_ascii )
       {

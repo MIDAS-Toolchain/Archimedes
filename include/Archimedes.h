@@ -447,7 +447,7 @@ typedef struct
   int running;
   char input_text[MAX_INPUT_LENGTH];
   int last_key_pressed;
-  aRectf_t g_viewport;
+  aCamera2D_t g_camera;
   struct {
     int channel_count;       // Total number of mixing channels
     int reserved_channels;   // Channels reserved from auto-allocation
@@ -1665,6 +1665,7 @@ uint32_t a_TimerGetTicks( aTimer_t* timer );
 uint8_t a_TimerStarted( aTimer_t* timer );
 uint8_t a_TimerPaused( aTimer_t* timer );
 int a_TimerOneshot( aTimer_t* timer, const uint32_t wait_ms );
+int a_TimerHz( aTimer_t* timer, const uint32_t frequency );
 
 /*
 ---------------------------------------------------------------
