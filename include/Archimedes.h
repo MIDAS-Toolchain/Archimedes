@@ -203,6 +203,18 @@ typedef struct
   int flip;
 } aImage_t;
 
+/** @brief Font configuration for styled text rendering */
+typedef struct
+{
+  int type;          // Font type (FONT_ENTER_COMMAND, FONT_GAME, etc.)
+  aColor_t fg;       // Foreground/text color
+  aColor_t bg;       // Background color (alpha 0 = no background)
+  int align;         // Text alignment (TEXT_ALIGN_LEFT/CENTER/RIGHT)
+  int wrap_width;    // Word wrap width (0 = no wrap)
+  float scale;       // Font scale multiplier (1.0 = default)
+  int padding;       // Padding around text (expands background)
+} aTextStyle_t;
+
 typedef struct
 {
   float x, y;
@@ -444,6 +456,7 @@ typedef struct
   SDL_Texture* font_textures[FONT_MAX];
   uint8_t glyph_exists[FONT_MAX][MAX_GLYPHS];  // Track which glyphs are in atlas
   int fallback_glyph[FONT_MAX];                 // Index of '-' fallback for each font
+  aTextStyle_t text_style;
   aMouse_t mouse;
   int running;
   char input_text[MAX_INPUT_LENGTH];
@@ -1288,18 +1301,6 @@ enum
   TEXT_ALIGN_CENTER,  /**< Center text horizontally at X coordinate */
   TEXT_ALIGN_RIGHT    /**< Align text to the right of X coordinate */
 };
-
-/** @brief Font configuration for styled text rendering */
-typedef struct
-{
-  int type;          // Font type (FONT_ENTER_COMMAND, FONT_GAME, etc.)
-  aColor_t fg;       // Foreground/text color
-  aColor_t bg;       // Background color (alpha 0 = no background)
-  int align;         // Text alignment (TEXT_ALIGN_LEFT/CENTER/RIGHT)
-  int wrap_width;    // Word wrap width (0 = no wrap)
-  float scale;       // Font scale multiplier (1.0 = default)
-  int padding;       // Padding around text (expands background)
-} aTextStyle_t;
 
 /**
  * @brief Calculate the height of text with word wrapping

@@ -106,6 +106,17 @@ int a_Init( const int width, const int height, const char *title )
  
   // Dark gray
   app.background = (aColor_t){20, 20, 20, 255};
+ 
+  // Set text style
+  app.text_style = (aTextStyle_t){
+    .type = FONT_CODE_PAGE_437,
+    .fg = white,
+    .bg = black,
+    .align = TEXT_ALIGN_CENTER,
+    .wrap_width = 0,
+    .scale = 1.0f,
+    .padding = 0
+  };
 
   // Set app to running state
   app.running = 1;
