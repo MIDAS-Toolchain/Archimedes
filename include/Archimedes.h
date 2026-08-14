@@ -2272,7 +2272,7 @@ aAnimation_t* a_AnimationCreate( const char* filename, const float w,
                                  const float h, const int frame_count,
                                  const uint32_t frame_duration );
 void a_AnimationFree( aAnimation_t* animation );
-void a_AnimationPlay( aPoint2f_t pos, aAnimation_t* animtion );
+void a_AnimationPlay( aRectf_t* dest, aAnimation_t* animation );
 
 /*
 ---------------------------------------------------------------

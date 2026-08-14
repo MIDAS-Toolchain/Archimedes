@@ -42,12 +42,8 @@ void a_AnimationFree( aAnimation_t* animation )
   }
 }
 
-void a_AnimationPlay( aPoint2f_t pos, aAnimation_t* animation )
+void a_AnimationPlay( aRectf_t* dest, aAnimation_t* animation )
 {
-  aRectf_t dest = (aRectf_t){ .x = pos.x, .y = pos.y,
-                              .w = animation->sprite_rect.w,
-                              .h = animation->sprite_rect.h };
-
   if ( a_TimerOneshot( animation->animation_timer, animation->frame_duration ) )
   {
     //increment frame_index
@@ -75,7 +71,7 @@ void a_AnimationPlay( aPoint2f_t pos, aAnimation_t* animation )
 
   a_BlitRect( animation->sprite_sheet,
               &animation->sprite_rect,
-              &dest,
+              dest,
               app.options.scale_factor );
 }
 

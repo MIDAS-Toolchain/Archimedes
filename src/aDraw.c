@@ -218,10 +218,6 @@ void a_Blit( aImage_t* img, float x, float y )
 {
   if ( !img ) return;
   
-  // Query texture for its original dimensions
-  int temp_w, temp_h;
-  SDL_QueryTexture( img->texture, NULL, NULL, &temp_w, &temp_h );
-  
   if ( img->color_modulate )
   {
     SDL_SetTextureColorMod( img->texture,
@@ -232,8 +228,8 @@ void a_Blit( aImage_t* img, float x, float y )
   SDL_FRect dest;
   dest.x = x;
   dest.y = y;
-  dest.w = temp_w;
-  dest.h = temp_h;
+  dest.w = img->rect.w;
+  dest.h = img->rect.h;
   
   //SDL_RenderCopyF( app.renderer, img->texture, NULL, &dest );
   SDL_RenderCopyExF( app.renderer, img->texture, NULL, &dest,
@@ -265,10 +261,8 @@ void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale
   
   else
   {
-    int temp_w, temp_h;
-    SDL_QueryTexture( img->texture, NULL, NULL, &temp_w, &temp_h );
-    temp_dest.w = temp_w;
-    temp_dest.h = temp_h;
+    temp_dest.w = img->rect.w;
+    temp_dest.h = img->rect.h;
   }
 
   if ( src != NULL )
@@ -282,7 +276,8 @@ void a_BlitRect( aImage_t* img, aRectf_t* src, aRectf_t* dest, const float scale
   
   else
   {
-    SDL_QueryTexture( img->texture, NULL, NULL, &temp_src.w, &temp_src.h );
+    temp_src.w = img->rect.w;
+    temp_src.h = img->rect.h;
   }
   
   if ( img->color_modulate )
@@ -325,10 +320,8 @@ void a_BlitRectFlipped( aImage_t* img, aRectf_t* src, aRectf_t* dest, const floa
 
   else
   {
-    int temp_w, temp_h;
-    SDL_QueryTexture( img->texture, NULL, NULL, &temp_w, &temp_h );
-    temp_dest.w = temp_w;
-    temp_dest.h = temp_h;
+    temp_dest.w = img->rect.w;
+    temp_dest.h = img->rect.h;
   }
 
   if ( src != NULL )
@@ -342,7 +335,8 @@ void a_BlitRectFlipped( aImage_t* img, aRectf_t* src, aRectf_t* dest, const floa
 
   else
   {
-    SDL_QueryTexture( img->texture, NULL, NULL, &temp_src.w, &temp_src.h );
+    temp_src.w = img->rect.w;
+    temp_src.h = img->rect.h;
   }
 
   if ( img->color_modulate )

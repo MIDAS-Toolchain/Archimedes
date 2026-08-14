@@ -112,7 +112,7 @@ int a_Init( const int width, const int height, const char *title )
     .type = FONT_CODE_PAGE_437,
     .fg = white,
     .bg = black,
-    .align = TEXT_ALIGN_CENTER,
+    .align = TEXT_ALIGN_LEFT,
     .wrap_width = 0,
     .scale = 1.0f,
     .padding = 0
